@@ -1,8 +1,3 @@
-Here is the **raw markdown** version, ready to drop into your project as `agents.md`.
-A complete **Agent Test Suite** section is included at the end, giving you automated prompts/checks you can run manually or integrate with future CI.
-
----
-
 # **agents.md**
 
 ## **Purpose**
@@ -14,11 +9,10 @@ This document defines how agents (contributors, assistants, and automated helper
 # **1. Guiding Principles**
 
 1. Always work inside a **feature branch**, never on `main`.
-2. Follow Ultimate Notion’s **code style**, **testing**, and **documentation** requirements.
-3. Keep every change **small, tested, and documented**.
-4. Do not skip linting, type checking, or pre-commit validation.
-5. Write clear commit messages and add/update tests with every feature.
-6. Structure work as explicit steps with a status (`pending`, `in_progress`, `complete`).
+2. Keep every change **small, tested, and documented**.
+3. Do not skip linting, type checking, or pre-commit validation.
+4. Write clear commit messages and add/update tests with every feature.
+5. Structure work as explicit steps with a status (`pending`, `in_progress`, `complete`).
    There should always be **exactly one** `in_progress` step.
 
 ---
@@ -108,8 +102,6 @@ Each commit must:
 * include descriptive messages,
 * reference issues when appropriate,
 * never leave failing tests behind.
-
-Add yourself to `AUTHORS.md` on first contribution.
 
 ---
 
@@ -304,13 +296,3 @@ It can be run manually, or embedded into future automation.
 * [ ] No steps skipped
 * [ ] No assumptions made without checking the codebase
 * [ ] Work done incrementally
-
----
-
-If you want, I can also:
-
-* generate a matching `CONTRIBUTING.md`,
-* scaffold a `/tests/agents/` directory with failing tests to enforce this,
-* or produce a `ci.yml` template for GitHub Actions that runs linting + hatch tests automatically.
-
-Just tell me what you want added.

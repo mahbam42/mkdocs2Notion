@@ -48,7 +48,7 @@ pip install -e .
 Or install from GitHub:
 
 ```bash
-pip install git+https://github.com/yourname/mkdocs2notion
+pip install git+https://github.com/mahbam42/mkdocs2notion
 ```
 
 ---

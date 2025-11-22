@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=65.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mkdocs2notion"
+version = "0.1.0"
+description = "Publish Markdown and mkdocs.yml-based documentation into Notion."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "mahbam42", email = "mahbam42@gmail.com" }
+]
+
+dependencies = [
+    "typer[all]>=0.9.0",
+    "pyyaml>=6.0",          # for mkdocs.yml parsing
+    "markdown-it-py>=3.0",  # optional, for markdown parsing (or replace later)
+    "rich>=13.0",           # nicer CLI output (typer[all] may already include)
+    # If using Ultimate Notion:
+    # "ultimate-notion>=0.5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-mock",
+    "black",
+    "ruff",
+    "mypy",
+]
+
+[project.urls]
+Homepage = "https://github.com/mahbam42/mkdocs2notion"
+Documentation = "https://github.com/mahbam42/mkdocs2notion"
+Repository = "https://github.com/mahbam42/mkdocs2notion"
+Issues = "https://github.com/mahbam42/mkdocs2notion/issues"
+
+[project.scripts]
+mkdocs2notion = "mkdocs2notion.cli:main"
+
+# Optional: Ruff + Black config
+[tool.ruff]
+line-length = 88
+extend-select = ["I"]
+
+[tool.black]
+line-length = 88
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
