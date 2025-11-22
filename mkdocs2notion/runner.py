@@ -1,13 +1,23 @@
+"""Entry points for running mkdocs2notion operations."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .loaders.directory import load_directory
-from .loaders.mkdocs_nav import load_mkdocs_nav
+from .loaders.directory import DirectoryTree, DocumentNode, load_directory
 from .loaders.id_map import PageIdMap
+from .loaders.mkdocs_nav import NavNode, load_mkdocs_nav
 from .markdown.parser import parse_markdown
 from .notion.api_adapter import NotionAdapter, get_default_adapter
+
+
+@dataclass
+class PublishItem:
+    """A single document ready to be published to Notion."""
+
+    document: DocumentNode
+    parent_path: Optional[str]
 
 
 def run_push(
@@ -50,9 +60,8 @@ def run_push(
 
 
 def run_dry_run(docs_path: Path, mkdocs_yml: Optional[Path]) -> None:
-    """
-    Print what the tool *would* do without contacting the Notion API.
-    """
+    """Print what the tool *would* do without contacting the Notion API."""
+
     print("🔎 Dry run: scanning directory…")
     directory_tree = load_directory(docs_path)
 
@@ -70,9 +79,8 @@ def run_dry_run(docs_path: Path, mkdocs_yml: Optional[Path]) -> None:
 
 
 def run_validate(docs_path: Path, mkdocs_yml: Optional[Path]) -> None:
-    """
-    Validate markdown files and mkdocs.yml without publishing.
-    """
+    """Validate markdown files and mkdocs.yml without publishing."""
+
     print("🔧 Validating docs…")
     directory_tree = load_directory(docs_path)
 
@@ -90,20 +98,62 @@ def run_validate(docs_path: Path, mkdocs_yml: Optional[Path]) -> None:
         print("✅ All checks passed.")
 
 
+def build_publish_plan(
+    directory_tree: DirectoryTree, nav_tree: Optional[NavNode]
+) -> list[PublishItem]:
+    """Create an ordered list of documents to publish.
+
+    Args:
+        directory_tree: Loaded directory tree.
+        nav_tree: Optional mkdocs navigation tree.
+
+    Returns:
+        list[PublishItem]: Ordered publish plan respecting nav ordering when
+            available, otherwise filesystem order.
+    """
+
+    if nav_tree is None:
+        return [PublishItem(document=doc, parent_path=None) for doc in directory_tree.documents]
+
+    plan: list[PublishItem] = []
+
+    def _walk(node: NavNode, parent_path: Optional[str]) -> None:
+        for child in node.children:
+            next_parent = parent_path
+            if child.file:
+                document = directory_tree.find_by_path(child.file)
+                if document:
+                    plan.append(PublishItem(document=document, parent_path=parent_path))
+                    next_parent = document.relative_path
+            if child.children:
+                _walk(child, next_parent)
+
+    _walk(nav_tree, None)
+    return plan
+
+
 def _publish_to_notion(
-    directory_tree,
-    nav_tree,
+    directory_tree: DirectoryTree,
+    nav_tree: Optional[NavNode],
     adapter: NotionAdapter,
     id_map: PageIdMap,
     parent_page_id: Optional[str],
 ) -> None:
-    """
-    Internal helper to publish pages in correct order based on nav_tree
-    or filesystem fallback.
-    """
-    # TODO: implement page creation/update according to structure
-    # iterate nav_tree if available, else directory_tree
-    # for each markdown file:
-    #   - parse with parse_markdown()
-    #   - adapter.create_or_update_page()
-    pass
+    """Publish documents to Notion respecting navigation ordering."""
+
+    publish_plan = build_publish_plan(directory_tree, nav_tree)
+
+    for item in publish_plan:
+        blocks = parse_markdown(item.document.content)
+        existing_page_id = id_map.get(item.document.relative_path)
+
+        resolved_parent_id = (
+            id_map.get(item.parent_path) if item.parent_path else parent_page_id
+        )
+        page_id = adapter.create_or_update_page(
+            title=item.document.title,
+            parent_page_id=resolved_parent_id,
+            page_id=existing_page_id,
+            blocks=blocks,
+        )
+        id_map.set(item.document.relative_path, page_id)
