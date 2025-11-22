@@ -1,0 +1,6 @@
+site_name: Sample Docs
+nav:
+  - Home: index.md
+  - Guide:
+      - Overview: guide.md
+      - Deep Dive: nested/deep.md

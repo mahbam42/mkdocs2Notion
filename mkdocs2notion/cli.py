@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import typer
 from pathlib import Path
 
-from .runner import run_push, run_dry_run, run_validate
+import typer  # type: ignore[import-not-found]
 
+from .runner import run_dry_run, run_push, run_validate
 
 app = typer.Typer(
     name="mkdocs2notion",
@@ -13,7 +13,7 @@ app = typer.Typer(
 )
 
 
-@app.command("push")
+@app.command("push")  # type: ignore[misc]
 def push(
     docs_path: Path = typer.Argument(
         ...,
@@ -50,7 +50,7 @@ def push(
     run_push(docs_path, mkdocs_yml, parent_page_id)
 
 
-@app.command("dry-run")
+@app.command("dry-run")  # type: ignore[misc]
 def dry_run(
     docs_path: Path = typer.Argument(
         ...,
@@ -80,7 +80,7 @@ def dry_run(
     run_dry_run(docs_path, mkdocs_yml)
 
 
-@app.command("validate")
+@app.command("validate")  # type: ignore[misc]
 def validate(
     docs_path: Path = typer.Argument(
         ...,
