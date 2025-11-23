@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import os
+import re
 from abc import ABC, abstractmethod
-from typing import Any, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
+from urllib.parse import urlparse
 
 from notion_client import Client
+from notion_client.errors import APIResponseError
 
 from mkdocs2notion.markdown.elements import (
     Admonition,
@@ -106,6 +109,8 @@ class NotionClientAdapter(NotionAdapter):
     def __init__(self, token: str, default_parent_page_id: str | None = None) -> None:
         self.client = Client(auth=token)
         self.default_parent_page_id = default_parent_page_id
+        self._validated_parents: Set[str] = set()
+        self._parent_types: Dict[str, str] = {}
 
     def create_or_update_page(
         self,
@@ -182,10 +187,53 @@ class NotionClientAdapter(NotionAdapter):
         return _render_elements(materialized)
 
     def _build_parent(self, provided_parent: str | None) -> dict[str, Any]:
-        parent_page = provided_parent or self.default_parent_page_id
-        if parent_page:
-            return {"type": "page_id", "page_id": parent_page}
-        return {"type": "workspace", "workspace": True}
+        parent_raw = provided_parent or self.default_parent_page_id
+        if not parent_raw:
+            raise RuntimeError(
+                "A parent page ID is required. Provide --parent or NOTION_PARENT_PAGE_ID. "
+                "Notion does not allow workspace-level pages for internal integrations."
+            )
+        normalized_parent = _normalize_parent_id(parent_raw)
+        parent_type = self._parent_types.get(normalized_parent)
+        if not parent_type:
+            parent_type = self._validate_parent_access(normalized_parent)
+        return {"type": f"{parent_type}_id", f"{parent_type}_id": normalized_parent}
+
+    def _validate_parent_access(self, parent_id: str) -> str:
+        if parent_id in self._validated_parents:
+            return self._parent_types[parent_id]
+        try:
+            self.client.pages.retrieve(page_id=parent_id)
+            self._cache_parent(parent_id, "page")
+            return "page"
+        except APIResponseError:
+            pass
+
+        try:
+            self.client.databases.retrieve(database_id=parent_id)
+            self._cache_parent(parent_id, "database")
+            return "database"
+        except APIResponseError as exc_db:
+            raise RuntimeError(
+                "Parent is not accessible. Verify the ID is correct (copy the 32-character "
+                "ID from the share link) and that the integration is shared with the page "
+                "or database."
+            ) from exc_db
+
+    def _cache_parent(self, parent_id: str, parent_type: str) -> None:
+        self._validated_parents.add(parent_id)
+        self._parent_types[parent_id] = parent_type
+
+
+def _normalize_parent_id(raw_id: str) -> str:
+    """Extract the canonical Notion ID from a URL, slug, or raw ID."""
+
+    cleaned = raw_id.strip()
+    match = re.search(r"([0-9a-fA-F]{32})", cleaned)
+    if not match:
+        return cleaned
+    hex_id = match.group(1)
+    return f"{hex_id[0:8]}-{hex_id[8:12]}-{hex_id[12:16]}-{hex_id[16:20]}-{hex_id[20:32]}"
 
 
 def _render_elements(elements: Sequence[Element]) -> list[dict[str, Any]]:
@@ -285,10 +333,12 @@ def _rich_text_from_inlines(
         if isinstance(inline, Text):
             parts.append(_text_rich(inline.text))
         elif isinstance(inline, Link):
-            parts.append(_text_rich(inline.text, inline.target))
+            url = inline.target if _is_valid_url(inline.target) else None
+            parts.append(_text_rich(inline.text, url))
         elif isinstance(inline, Image):
             alt = inline.alt or inline.src
-            parts.append(_text_rich(alt, inline.src))
+            url = inline.src if _is_valid_url(inline.src) else None
+            parts.append(_text_rich(alt, url))
     return parts
 
 
@@ -297,6 +347,11 @@ def _text_rich(content: str, url: str | None = None) -> dict[str, Any]:
     if url:
         text["link"] = {"url": url}
     return {"type": "text", "text": text}
+
+
+def _is_valid_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
 
 
 __all__ = ["NotionAdapter", "NotionClientAdapter", "get_default_adapter"]
