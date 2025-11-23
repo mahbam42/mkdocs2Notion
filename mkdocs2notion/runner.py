@@ -160,5 +160,6 @@ def _publish_to_notion(
             parent_page_id=resolved_parent_id,
             page_id=existing_page_id,
             blocks=blocks,
+            source_path=item.document.path,
         )
         id_map.set(item.document.relative_path, page_id)

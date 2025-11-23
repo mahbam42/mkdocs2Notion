@@ -11,7 +11,7 @@ Text introducing nested structures.
 
 ## Inline Assets
 
-Images and links can be mixed: ![Chart](images/chart.png) and a reference to [internal docs](./basic.md).
+Images and links can be mixed: and a reference to [internal docs](./basic.md).
 
 ## More Code
 

@@ -4,7 +4,7 @@ Welcome to the example page that demonstrates the supported Markdown features.
 
 ## Links and Images
 
-Paragraph text with an [inline link](https://example.com) and an embedded image: ![Diagram](images/diagram.png).
+Paragraph text with an [inline link](https://example.com) and an embedded image: ![Diagram](https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Dunning%E2%80%93Kruger_Effect_01.svg/2462px-Dunning%E2%80%93Kruger_Effect_01.svg.png).
 
 ### Lists
 

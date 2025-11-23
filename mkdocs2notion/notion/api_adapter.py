@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import json
+import mimetypes
 import os
 import re
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
-from urllib.parse import urlparse
+from pathlib import Path
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from urllib.parse import urljoin, urlparse
+
+import requests
 
 from notion_client import Client
 from notion_client.errors import APIResponseError
@@ -44,6 +49,7 @@ class NotionAdapter(ABC):
         title: str,
         parent_page_id: Optional[str],
         blocks: List[Any],
+        source_path: Path | None = None,
     ) -> str:
         """Create a new Notion page and return its page_id."""
         raise NotImplementedError
@@ -53,6 +59,7 @@ class NotionAdapter(ABC):
         self,
         page_id: str,
         blocks: List[Any],
+        source_path: Path | None = None,
     ) -> None:
         """Update an existing Notion page."""
         raise NotImplementedError
@@ -68,6 +75,7 @@ class NotionAdapter(ABC):
         parent_page_id: Optional[str],
         page_id: Optional[str],
         blocks: List[Any],
+        source_path: Path | None = None,
     ) -> str:
         """
         Convenience method:
@@ -75,10 +83,10 @@ class NotionAdapter(ABC):
         - else → create
         """
         if page_id:
-            self.update_page(page_id, blocks)
+            self.update_page(page_id, blocks, source_path=source_path)
             return page_id
 
-        return self.create_page(title, parent_page_id, blocks)
+        return self.create_page(title, parent_page_id, blocks, source_path=source_path)
 
 
 def get_default_adapter() -> NotionAdapter:
@@ -108,6 +116,8 @@ class NotionClientAdapter(NotionAdapter):
 
     def __init__(self, token: str, default_parent_page_id: str | None = None) -> None:
         self.client = Client(auth=token)
+        self._token = token
+        self._api_version = os.getenv("NOTION_VERSION", "2022-06-28")
         self.default_parent_page_id = default_parent_page_id
         self._validated_parents: Set[str] = set()
         self._parent_types: Dict[str, str] = {}
@@ -118,8 +128,13 @@ class NotionClientAdapter(NotionAdapter):
         parent_page_id: Optional[str],
         page_id: Optional[str],
         blocks: List[Any],
+        source_path: Path | None = None,
     ) -> str:
-        payload_blocks = self._normalize_blocks(blocks)
+        upload_parent = page_id or parent_page_id or self.default_parent_page_id
+        parent_type = self._parent_types.get(upload_parent) if upload_parent else None
+        if upload_parent and not parent_type:
+            parent_type = self._validate_parent_access(upload_parent)
+        payload_blocks = self._normalize_blocks(blocks, source_path, upload_parent, parent_type)
         if page_id:
             self._update_page(page_id, title, payload_blocks)
             return page_id
@@ -130,12 +145,20 @@ class NotionClientAdapter(NotionAdapter):
         title: str,
         parent_page_id: Optional[str],
         blocks: List[Any],
+        source_path: Path | None = None,
     ) -> str:
-        payload_blocks = self._normalize_blocks(blocks)
+        upload_parent = parent_page_id or self.default_parent_page_id
+        parent_type = self._parent_types.get(upload_parent) if upload_parent else None
+        if upload_parent and not parent_type:
+            parent_type = self._validate_parent_access(upload_parent)
+        payload_blocks = self._normalize_blocks(blocks, source_path, upload_parent, parent_type)
         return self._create_page(title, parent_page_id, payload_blocks)
 
-    def update_page(self, page_id: str, blocks: List[Any]) -> None:
-        payload_blocks = self._normalize_blocks(blocks)
+    def update_page(self, page_id: str, blocks: List[Any], source_path: Path | None = None) -> None:
+        parent_type = self._parent_types.get(page_id) if page_id else None
+        if page_id and not parent_type:
+            parent_type = self._validate_parent_access(page_id)
+        payload_blocks = self._normalize_blocks(blocks, source_path, page_id, parent_type)
         self._update_page(page_id, None, payload_blocks)
 
     def get_page(self, page_id: str) -> Any:
@@ -173,7 +196,13 @@ class NotionClientAdapter(NotionAdapter):
         if children:
             self.client.blocks.children.append(block_id=block_id, children=children)
 
-    def _normalize_blocks(self, blocks: List[Any] | Page) -> list[dict[str, Any]]:
+    def _normalize_blocks(
+        self,
+        blocks: List[Any] | Page,
+        source_path: Path | None,
+        upload_parent: str | None,
+        upload_parent_type: str | None,
+    ) -> list[dict[str, Any]]:
         if isinstance(blocks, Page):
             elements: Iterable[Element] = blocks.children
         else:
@@ -184,7 +213,10 @@ class NotionClientAdapter(NotionAdapter):
         materialized = list(elements)
         if materialized and isinstance(materialized[0], dict):
             return [dict(block) for block in materialized]
-        return _render_elements(materialized)
+        resolver = lambda img: self._resolve_image(  # noqa: E731
+            img, source_path, upload_parent, upload_parent_type
+        )
+        return _render_elements(materialized, resolver)
 
     def _build_parent(self, provided_parent: str | None) -> dict[str, Any]:
         parent_raw = provided_parent or self.default_parent_page_id
@@ -224,6 +256,120 @@ class NotionClientAdapter(NotionAdapter):
         self._validated_parents.add(parent_id)
         self._parent_types[parent_id] = parent_type
 
+    def _resolve_image(
+        self,
+        image: Image,
+        source_path: Path | None,
+        upload_parent: str | None,
+        upload_parent_type: str | None,
+    ) -> dict[str, Any]:
+        caption = image.alt or image.src
+        if _is_valid_url(image.src):
+            return _image_block("external", {"url": image.src}, caption)
+
+        base = os.getenv("MKDOCS2NOTION_ASSET_BASE_URL", "").strip()
+        if base and _is_valid_url(base):
+            resolved = urljoin(base.rstrip("/") + "/", image.src.lstrip("/"))
+            if _is_valid_url(resolved):
+                return _image_block("external", {"url": resolved}, caption)
+
+        if source_path:
+            local_path = (source_path.parent / image.src).resolve()
+            if local_path.is_file():
+                file_type, payload = self._upload_local_file(
+                    local_path, upload_parent, upload_parent_type
+                )
+                return _image_block(file_type, payload, caption)
+
+        raise RuntimeError(
+            "Image source is not a valid URL and no local file was found. Provide an "
+            "absolute URL, ensure the image path is correct relative to the markdown "
+            "file, or configure MKDOCS2NOTION_ASSET_BASE_URL."
+        )
+
+    def _upload_local_file(
+        self, path: Path, upload_parent: str | None, upload_parent_type: str | None
+    ) -> Tuple[str, dict[str, Any]]:
+        mime_type, _ = mimetypes.guess_type(path.name)
+        parent = upload_parent or self.default_parent_page_id
+        if not parent:
+            raise RuntimeError("A parent page ID is required to upload local images.")
+        if upload_parent_type and upload_parent_type != "page":
+            raise RuntimeError(
+                "Local image uploads must target a page parent, not a database. Please use a page "
+                "as the parent for image uploads."
+            )
+        parent_type = upload_parent_type or "page"
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Notion-Version": self._api_version,
+            "Accept": "application/json",
+        }
+        with path.open("rb") as file_handle:
+            files = {
+                "file": (path.name, file_handle, mime_type or "application/octet-stream"),
+            }
+            response = requests.post(
+                "https://api.notion.com/v1/files",
+                headers=headers,
+                files=files,
+                data={
+                    "parent": json.dumps({"type": "page_id", "page_id": parent})
+                },
+                timeout=30,
+            )
+        if not response.ok:
+            try:
+                error_body = response.json()
+            except ValueError:
+                error_body = response.text
+            raise RuntimeError(
+                f"Failed to upload image {path.name} to Notion: {response.status_code} {error_body}"
+            )
+
+        payload = response.json()
+        file_id = payload.get("id") or payload.get("file", {}).get("id")
+        file_url = payload.get("file", {}).get("url")
+        if file_id:
+            return "file", {"file_id": file_id}
+        if file_url:
+            return "external", {"url": file_url}
+        raise RuntimeError("Unexpected response from Notion file upload; missing file id or url.")
+
+
+def _render_text_and_images(
+    inlines: Sequence[InlineContent],
+    fallback_text: str,
+    resolve_image: Callable[[Image], dict[str, Any]],
+) -> Tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """
+    Build Notion rich text payload and collect image blocks for inline images.
+
+    Images become separate Notion image blocks to render visually instead of as links.
+    """
+
+    rich_text: list[dict[str, Any]] = []
+    image_blocks: list[dict[str, Any]] = []
+
+    if not inlines:
+        return [_text_rich(fallback_text)], []
+
+    for inline in inlines:
+        if isinstance(inline, Text):
+            rich_text.append(_text_rich(inline.text))
+        elif isinstance(inline, Link):
+            url = inline.target if _is_valid_url(inline.target) else None
+            rich_text.append(_text_rich(inline.text, url))
+        elif isinstance(inline, Image):
+            image_blocks.append(resolve_image(inline))
+        else:
+            rich_text.append(_text_rich(fallback_text))
+
+    if not rich_text:
+        rich_text = [_text_rich(fallback_text)]
+
+    return rich_text, image_blocks
+
 
 def _normalize_parent_id(raw_id: str) -> str:
     """Extract the canonical Notion ID from a URL, slug, or raw ID."""
@@ -236,36 +382,47 @@ def _normalize_parent_id(raw_id: str) -> str:
     return f"{hex_id[0:8]}-{hex_id[8:12]}-{hex_id[12:16]}-{hex_id[16:20]}-{hex_id[20:32]}"
 
 
-def _render_elements(elements: Sequence[Element]) -> list[dict[str, Any]]:
+def _render_elements(
+    elements: Sequence[Element],
+    resolve_image: Callable[[Image], dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Convert parsed elements into Notion block payloads."""
 
     blocks: list[dict[str, Any]] = []
     for element in elements:
-        blocks.extend(_render_element(element))
+        blocks.extend(_render_element(element, resolve_image))
     return blocks
 
 
-def _render_element(element: Element) -> list[dict[str, Any]]:
+def _render_element(
+    element: Element,
+    resolve_image: Callable[[Image], dict[str, Any]],
+) -> list[dict[str, Any]]:
     if isinstance(element, Heading):
         heading_type = {1: "heading_1", 2: "heading_2"}.get(element.level, "heading_3")
-        return [
+        rich_text, image_blocks = _render_text_and_images(
+            element.inlines, element.text, resolve_image
+        )
+        blocks: list[dict[str, Any]] = []
+        blocks.append(
             {
                 "type": heading_type,
                 heading_type: {
-                    "rich_text": _rich_text_from_inlines(element.inlines, element.text)
+                    "rich_text": rich_text,
                 },
             }
-        ]
+        )
+        blocks.extend(image_blocks)
+        return blocks
 
     if isinstance(element, Paragraph):
-        return [
-            {
-                "type": "paragraph",
-                "paragraph": {
-                    "rich_text": _rich_text_from_inlines(element.inlines, element.text)
-                },
-            }
-        ]
+        rich_text, image_blocks = _render_text_and_images(
+            element.inlines, element.text, resolve_image
+        )
+        blocks: list[dict[str, Any]] = []
+        blocks.append({"type": "paragraph", "paragraph": {"rich_text": rich_text}})
+        blocks.extend(image_blocks)
+        return blocks
 
     if isinstance(element, ListElement):
         block_type = "numbered_list_item" if element.ordered else "bulleted_list_item"
@@ -293,7 +450,7 @@ def _render_element(element: Element) -> list[dict[str, Any]]:
     if isinstance(element, Admonition):
         children: list[dict[str, Any]] = []
         for child in element.content:
-            children.extend(_render_element(child))
+            children.extend(_render_element(child, resolve_image))
         headline = element.title or element.kind.title()
         return [
             {
@@ -352,6 +509,18 @@ def _text_rich(content: str, url: str | None = None) -> dict[str, Any]:
 def _is_valid_url(url: str) -> bool:
     parsed = urlparse(url)
     return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
+def _image_block(image_type: str, payload: dict[str, Any], caption: str) -> dict[str, Any]:
+    if image_type == "file" and "file_id" in payload:
+        image_payload: dict[str, Any] = {"type": "file", "file": {"file_id": payload["file_id"]}}
+    elif image_type == "external" and "url" in payload:
+        image_payload = {"type": "external", "external": {"url": payload["url"]}}
+    else:
+        raise RuntimeError("Unsupported image payload returned from upload.")
+
+    image_payload["caption"] = [_text_rich(caption)]
+    return {"type": "image", "image": image_payload}
 
 
 __all__ = ["NotionAdapter", "NotionClientAdapter", "get_default_adapter"]

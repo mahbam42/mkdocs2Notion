@@ -14,13 +14,17 @@ class RecordingAdapter(NotionAdapter):
         self.updated: list[tuple[str, List[Any]]] = []
 
     def create_page(
-        self, title: str, parent_page_id: Optional[str], blocks: List[Any]
+        self,
+        title: str,
+        parent_page_id: Optional[str],
+        blocks: List[Any],
+        source_path=None,
     ) -> str:
         page_id = f"page-{len(self.created) + 1}"
         self.created.append((title, parent_page_id, blocks))
         return page_id
 
-    def update_page(self, page_id: str, blocks: List[Any]) -> None:
+    def update_page(self, page_id: str, blocks: List[Any], source_path=None) -> None:
         self.updated.append((page_id, blocks))
 
     def get_page(self, page_id: str) -> Any:  # pragma: no cover - not used in tests
