@@ -7,16 +7,11 @@ import mimetypes
 import os
 import re
 from abc import ABC, abstractmethod
-<<<<<<< HEAD
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, cast
 from urllib.parse import urljoin, urlparse
 
 import requests
-=======
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, cast
-from urllib.parse import urlparse
->>>>>>> c4f4b1a (extended .to_dict(), tightened types, and updated internal documentation)
 
 from notion_client import Client
 from notion_client.errors import APIResponseError
@@ -207,36 +202,26 @@ class NotionClientAdapter(NotionAdapter):
             self.client.blocks.children.append(block_id=block_id, children=children)
 
     def _normalize_blocks(
-<<<<<<< HEAD
         self,
-        blocks: List[Any] | Page,
+        blocks: Sequence[Element] | Sequence[Mapping[str, Any]] | Page,
         source_path: Path | None,
         upload_parent: str | None,
         upload_parent_type: str | None,
     ) -> list[dict[str, Any]]:
-=======
-        self, blocks: Sequence[Element] | Sequence[Mapping[str, Any]] | Page
-    ) -> list[dict[str, Any]]:
         elements: Sequence[Element] | Sequence[Mapping[str, Any]]
->>>>>>> c4f4b1a (extended .to_dict(), tightened types, and updated internal documentation)
         if isinstance(blocks, Page):
             elements = blocks.children
         else:
             elements = blocks
 
         materialized = list(elements)
-<<<<<<< HEAD
-        if materialized and isinstance(materialized[0], dict):
-            return [dict(block) for block in materialized]
+        if materialized and all(isinstance(block, Mapping) for block in materialized):
+            return [dict(block) for block in cast(Sequence[Mapping[str, Any]], materialized)]
+
         resolver = lambda img: self._resolve_image(  # noqa: E731
             img, source_path, upload_parent, upload_parent_type
         )
-        return _render_elements(materialized, resolver)
-=======
-        if materialized and all(isinstance(block, Mapping) for block in materialized):
-            return [dict(block) for block in cast(Sequence[Mapping[str, Any]], materialized)]
-        return _render_elements(cast(Sequence[Element], materialized))
->>>>>>> c4f4b1a (extended .to_dict(), tightened types, and updated internal documentation)
+        return _render_elements(cast(Sequence[Element], materialized), resolver)
 
     def _build_parent(self, provided_parent: str | None) -> dict[str, Any]:
         parent_raw = provided_parent or self.default_parent_page_id
