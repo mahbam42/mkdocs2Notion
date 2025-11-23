@@ -35,11 +35,17 @@ mkdocs2notion = "mkdocs2notion.cli:main"
 
 [tool.ruff]
 line-length = 88
+
+[tool.ruff.lint]
 extend-select = ["I"]
 
 [tool.mypy]
 python_version = "3.14"
 strict = true
+
+[[tool.mypy.overrides]]
+module = ["requests"]
+ignore_missing_imports = true
 
 [tool.hatch.envs.default]
 dependencies = [

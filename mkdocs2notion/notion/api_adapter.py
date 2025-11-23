@@ -8,11 +8,21 @@ import os
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    cast,
+)
 from urllib.parse import urljoin, urlparse
 
 import requests
-
 from notion_client import Client
 from notion_client.errors import APIResponseError
 
@@ -136,7 +146,9 @@ class NotionClientAdapter(NotionAdapter):
         parent_type = self._parent_types.get(upload_parent) if upload_parent else None
         if upload_parent and not parent_type:
             parent_type = self._validate_parent_access(upload_parent)
-        payload_blocks = self._normalize_blocks(blocks, source_path, upload_parent, parent_type)
+        payload_blocks = self._normalize_blocks(
+            blocks, source_path, upload_parent, parent_type
+        )
         if page_id:
             self._update_page(page_id, title, payload_blocks)
             return page_id
@@ -153,14 +165,20 @@ class NotionClientAdapter(NotionAdapter):
         parent_type = self._parent_types.get(upload_parent) if upload_parent else None
         if upload_parent and not parent_type:
             parent_type = self._validate_parent_access(upload_parent)
-        payload_blocks = self._normalize_blocks(blocks, source_path, upload_parent, parent_type)
+        payload_blocks = self._normalize_blocks(
+            blocks, source_path, upload_parent, parent_type
+        )
         return self._create_page(title, parent_page_id, payload_blocks)
 
-    def update_page(self, page_id: str, blocks: List[Any], source_path: Path | None = None) -> None:
+    def update_page(
+        self, page_id: str, blocks: List[Any], source_path: Path | None = None
+    ) -> None:
         parent_type = self._parent_types.get(page_id) if page_id else None
         if page_id and not parent_type:
             parent_type = self._validate_parent_access(page_id)
-        payload_blocks = self._normalize_blocks(blocks, source_path, page_id, parent_type)
+        payload_blocks = self._normalize_blocks(
+            blocks, source_path, page_id, parent_type
+        )
         self._update_page(page_id, None, payload_blocks)
 
     def get_page(self, page_id: str) -> Any:
@@ -195,7 +213,9 @@ class NotionClientAdapter(NotionAdapter):
     def _replace_block_children(
         self, block_id: str, children: list[dict[str, Any]]
     ) -> None:
-        existing = cast(dict[str, Any], self.client.blocks.children.list(block_id=block_id))
+        existing = cast(
+            dict[str, Any], self.client.blocks.children.list(block_id=block_id)
+        )
         for child in existing.get("results", []):
             self.client.blocks.delete(block_id=child["id"])
         if children:
@@ -216,7 +236,9 @@ class NotionClientAdapter(NotionAdapter):
 
         materialized = list(elements)
         if materialized and all(isinstance(block, Mapping) for block in materialized):
-            return [dict(block) for block in cast(Sequence[Mapping[str, Any]], materialized)]
+            return [
+                dict(block) for block in cast(Sequence[Mapping[str, Any]], materialized)
+            ]
 
         resolver = lambda img: self._resolve_image(  # noqa: E731
             img, source_path, upload_parent, upload_parent_type
@@ -304,7 +326,6 @@ class NotionClientAdapter(NotionAdapter):
                 "Local image uploads must target a page parent, not a database. Please use a page "
                 "as the parent for image uploads."
             )
-        parent_type = upload_parent_type or "page"
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Notion-Version": self._api_version,
@@ -312,15 +333,17 @@ class NotionClientAdapter(NotionAdapter):
         }
         with path.open("rb") as file_handle:
             files = {
-                "file": (path.name, file_handle, mime_type or "application/octet-stream"),
+                "file": (
+                    path.name,
+                    file_handle,
+                    mime_type or "application/octet-stream",
+                ),
             }
             response = requests.post(
                 "https://api.notion.com/v1/files",
                 headers=headers,
                 files=files,
-                data={
-                    "parent": json.dumps({"type": "page_id", "page_id": parent})
-                },
+                data={"parent": json.dumps({"type": "page_id", "page_id": parent})},
                 timeout=30,
             )
         if not response.ok:
@@ -339,7 +362,9 @@ class NotionClientAdapter(NotionAdapter):
             return "file", {"file_id": file_id}
         if file_url:
             return "external", {"url": file_url}
-        raise RuntimeError("Unexpected response from Notion file upload; missing file id or url.")
+        raise RuntimeError(
+            "Unexpected response from Notion file upload; missing file id or url."
+        )
 
 
 def _render_text_and_images(
@@ -384,7 +409,9 @@ def _normalize_parent_id(raw_id: str) -> str:
     if not match:
         return cleaned
     hex_id = match.group(1)
-    return f"{hex_id[0:8]}-{hex_id[8:12]}-{hex_id[12:16]}-{hex_id[16:20]}-{hex_id[20:32]}"
+    return (
+        f"{hex_id[0:8]}-{hex_id[8:12]}-{hex_id[12:16]}-{hex_id[16:20]}-{hex_id[20:32]}"
+    )
 
 
 def _render_elements(
@@ -408,26 +435,26 @@ def _render_element(
         rich_text, image_blocks = _render_text_and_images(
             element.inlines, element.text, resolve_image
         )
-        blocks: list[dict[str, Any]] = []
-        blocks.append(
+        heading_blocks: list[dict[str, Any]] = [
             {
                 "type": heading_type,
                 heading_type: {
                     "rich_text": rich_text,
                 },
             }
-        )
-        blocks.extend(image_blocks)
-        return blocks
+        ]
+        heading_blocks.extend(image_blocks)
+        return heading_blocks
 
     if isinstance(element, Paragraph):
         rich_text, image_blocks = _render_text_and_images(
             element.inlines, element.text, resolve_image
         )
-        blocks: list[dict[str, Any]] = []
-        blocks.append({"type": "paragraph", "paragraph": {"rich_text": rich_text}})
-        blocks.extend(image_blocks)
-        return blocks
+        paragraph_blocks: list[dict[str, Any]] = [
+            {"type": "paragraph", "paragraph": {"rich_text": rich_text}}
+        ]
+        paragraph_blocks.extend(image_blocks)
+        return paragraph_blocks
 
     if isinstance(element, ListElement):
         block_type = "numbered_list_item" if element.ordered else "bulleted_list_item"
@@ -516,9 +543,14 @@ def _is_valid_url(url: str) -> bool:
     return parsed.scheme in ("http", "https") and bool(parsed.netloc)
 
 
-def _image_block(image_type: str, payload: dict[str, Any], caption: str) -> dict[str, Any]:
+def _image_block(
+    image_type: str, payload: dict[str, Any], caption: str
+) -> dict[str, Any]:
     if image_type == "file" and "file_id" in payload:
-        image_payload: dict[str, Any] = {"type": "file", "file": {"file_id": payload["file_id"]}}
+        image_payload: dict[str, Any] = {
+            "type": "file",
+            "file": {"file_id": payload["file_id"]},
+        }
     elif image_type == "external" and "url" in payload:
         image_payload = {"type": "external", "external": {"url": payload["url"]}}
     else:

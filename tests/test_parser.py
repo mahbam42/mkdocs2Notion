@@ -67,8 +67,8 @@ def test_parse_inline_images() -> None:
 
 def test_parse_inline_links_and_images_with_parentheses_and_titles() -> None:
     content = (
-        "Mixed [spec](https://example.com/path(foo) \"Spec Title\") "
-        "and image ![diagram](./assets/diagram (1).png \"Diagram\") end."
+        'Mixed [spec](https://example.com/path(foo) "Spec Title") '
+        'and image ![diagram](./assets/diagram (1).png "Diagram") end.'
     )
 
     page = parse_markdown(content)

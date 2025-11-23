@@ -4,7 +4,6 @@ from typer.testing import CliRunner
 
 from mkdocs2notion.cli import app
 
-
 runner = CliRunner()
 
 
