@@ -27,6 +27,7 @@ def run_push(
     docs_path: Path,
     mkdocs_yml: Optional[Path],
     parent_page_id: Optional[str] = None,
+    fresh: bool = False,
 ) -> None:
     """
     Push a directory of Markdown files to Notion.
@@ -49,7 +50,7 @@ def run_push(
         print(f"📄 Loading mkdocs.yml navigation: {mkdocs_yml}")
         nav_tree = load_mkdocs_nav(mkdocs_yml)
 
-    id_map = PageIdMap.from_default_location(docs_path)
+    id_map = PageIdMap.from_default_location(docs_path, ignore_existing=fresh)
 
     print("📝 Pushing documents to Notion…")
     _publish_to_notion(

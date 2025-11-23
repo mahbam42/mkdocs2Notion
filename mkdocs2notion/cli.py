@@ -37,6 +37,11 @@ def push(
         "-p",
         help="Notion page ID under which all pages will be created (overrides env variable).",
     ),
+    fresh: bool = typer.Option(
+        False,
+        "--fresh",
+        help="Ignore cached Notion page IDs when pushing.",
+    ),
 ) -> None:
     """
     Push a directory of Markdown documents to Notion.
@@ -45,9 +50,10 @@ def push(
         mkdocs2notion push docs/
         mkdocs2notion push docs/ --mkdocs mkdocs.yml
         mkdocs2notion push docs/ --parent <NOTION_PAGE_ID>
+        mkdocs2notion push docs/ --fresh
 
     """
-    run_push(docs_path, mkdocs_yml, parent_page_id)
+    run_push(docs_path, mkdocs_yml, parent_page_id, fresh=fresh)
 
 
 @app.command("dry-run")

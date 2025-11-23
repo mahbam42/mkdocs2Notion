@@ -15,11 +15,14 @@ class PageIdMap:
     map: dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def from_default_location(cls, docs_root: Path) -> "PageIdMap":
+    def from_default_location(
+        cls, docs_root: Path, *, ignore_existing: bool = False
+    ) -> "PageIdMap":
         """Load mapping from ``<docs_root>/.mkdocs2notion_ids.json``.
 
         Args:
             docs_root: Root directory containing Markdown docs.
+            ignore_existing: When True, start with a blank map even if a file exists.
 
         Returns:
             PageIdMap: A loaded or newly initialized mapping.
@@ -27,7 +30,7 @@ class PageIdMap:
 
         mapping_path = docs_root / ".mkdocs2notion_ids.json"
         mapping: dict[str, str] = {}
-        if mapping_path.exists():
+        if mapping_path.exists() and not ignore_existing:
             try:
                 data = json.loads(mapping_path.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
