@@ -9,6 +9,7 @@ from mkdocs2notion.markdown.elements import (
     List,
     Page,
     Paragraph,
+    Text,
 )
 from mkdocs2notion.markdown.parser import MarkdownParseError, parse_markdown
 
@@ -96,3 +97,102 @@ print('hi')
         parse_markdown(content)
 
     assert "Unterminated code fence" in str(excinfo.value)
+
+
+def test_parse_headings_with_mixed_levels_and_inline_links() -> None:
+    content = """# Title with [inline](https://example.com/path)
+## Subheading
+### Deep Heading with trailing space   
+"""
+
+    page = parse_markdown(content)
+    headings = [child for child in page.children if isinstance(child, Heading)]
+
+    assert page.title == "Title with inline"
+    assert [heading.level for heading in headings] == [1, 2, 3]
+    top_heading = headings[0]
+    assert any(isinstance(inline, Link) for inline in top_heading.inlines)
+    assert headings[-1].text == "Deep Heading with trailing space"
+
+
+def test_parse_lists_separates_ordered_and_unordered_blocks() -> None:
+    content = """- alpha
+- beta
+
+1. first
+2. second
+
+- trailing
+"""
+
+    page = parse_markdown(content)
+
+    assert [type(child) for child in page.children] == [List, List, List]
+    first_list, second_list, third_list = page.children
+
+    assert not first_list.ordered
+    assert [item.text for item in first_list.items] == ["alpha", "beta"]
+    assert second_list.ordered
+    assert [item.text for item in second_list.items] == ["first", "second"]
+    assert not third_list.ordered
+    assert [item.text for item in third_list.items] == ["trailing"]
+
+
+def test_parse_inline_links_handles_nested_parentheses_and_ignores_invalid() -> None:
+    content = (
+        "Prefix [nested(fun)](http://example.com/path(a,b(c))) middle "
+        "[broken](missing"
+    )
+
+    page = parse_markdown(content)
+    paragraph = page.children[0]
+
+    link = next(inline for inline in paragraph.inlines if isinstance(inline, Link))
+    assert link.target == "http://example.com/path(a,b(c))"
+    text_fragments = "".join(
+        inline.text for inline in paragraph.inlines if isinstance(inline, Text)
+    )
+    assert "[broken](missing" in text_fragments
+
+
+def test_parse_code_block_without_language_and_preserves_blank_lines() -> None:
+    content = """Intro
+```
+line one
+
+line three
+```
+After
+"""
+
+    page = parse_markdown(content)
+
+    paragraph, code_block, trailing_paragraph = page.children
+    assert isinstance(code_block, CodeBlock)
+    assert code_block.language is None
+    assert code_block.code == "line one\n\nline three"
+    assert isinstance(paragraph, Paragraph)
+    assert isinstance(trailing_paragraph, Paragraph)
+
+
+def test_parse_admonition_with_multiple_paragraphs_and_fallback_title() -> None:
+    content = """!!! warning Custom title
+    first line
+
+    second paragraph
+
+Outside text
+"""
+
+    page = parse_markdown(content)
+
+    admonition, trailing_paragraph = page.children
+    assert isinstance(admonition, Admonition)
+    assert admonition.kind == "warning"
+    assert admonition.title == "Custom title"
+    assert [type(block) for block in admonition.content] == [Paragraph, Paragraph]
+    assert [block.text for block in admonition.content] == [
+        "first line",
+        "second paragraph",
+    ]
+    assert isinstance(trailing_paragraph, Paragraph)
