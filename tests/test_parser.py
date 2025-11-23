@@ -1,3 +1,5 @@
+import pytest
+
 from mkdocs2notion.markdown.elements import (
     Admonition,
     CodeBlock,
@@ -8,7 +10,7 @@ from mkdocs2notion.markdown.elements import (
     Page,
     Paragraph,
 )
-from mkdocs2notion.markdown.parser import parse_markdown
+from mkdocs2notion.markdown.parser import MarkdownParseError, parse_markdown
 
 
 def test_parse_basic_blocks() -> None:
@@ -61,3 +63,36 @@ def test_parse_inline_images() -> None:
 
     assert isinstance(paragraph, Paragraph)
     assert any(isinstance(inline, Image) for inline in paragraph.inlines)
+
+
+def test_parse_inline_links_and_images_with_parentheses_and_titles() -> None:
+    content = (
+        "Mixed [spec](https://example.com/path(foo) \"Spec Title\") "
+        "and image ![diagram](./assets/diagram (1).png \"Diagram\") end."
+    )
+
+    page = parse_markdown(content)
+    paragraph = page.children[0]
+
+    assert isinstance(paragraph, Paragraph)
+    assert paragraph.text == "Mixed spec and image diagram end."
+
+    link = next(inline for inline in paragraph.inlines if isinstance(inline, Link))
+    assert link.target == "https://example.com/path(foo)"
+    assert link.text == "spec"
+
+    image = next(inline for inline in paragraph.inlines if isinstance(inline, Image))
+    assert image.src == "./assets/diagram (1).png"
+    assert image.alt == "diagram"
+
+
+def test_parse_unterminated_code_block_raises() -> None:
+    content = """Intro
+```python
+print('hi')
+"""
+
+    with pytest.raises(MarkdownParseError) as excinfo:
+        parse_markdown(content)
+
+    assert "Unterminated code fence" in str(excinfo.value)

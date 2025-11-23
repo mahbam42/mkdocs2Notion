@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from .loaders.directory import DirectoryTree, DocumentNode, load_directory
 from .loaders.id_map import PageIdMap
 from .loaders.mkdocs_nav import NavNode, load_mkdocs_nav
-from .markdown.parser import parse_markdown
-from .notion.api_adapter import NotionAdapter, get_default_adapter
+from .markdown.parser import MarkdownParseError, parse_markdown
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .notion.api_adapter import NotionAdapter
 
 
 @dataclass
@@ -35,6 +37,8 @@ def run_push(
     - parse markdown → internal block structures
     - push pages to Notion using a Notion adapter
     """
+    from .notion.api_adapter import get_default_adapter
+
     adapter = get_default_adapter()
 
     print(f"📁 Loading markdown directory: {docs_path}")
@@ -79,13 +83,19 @@ def run_dry_run(docs_path: Path, mkdocs_yml: Optional[Path]) -> None:
     print("\n(no changes made)")
 
 
-def run_validate(docs_path: Path, mkdocs_yml: Optional[Path]) -> None:
+def run_validate(docs_path: Path, mkdocs_yml: Optional[Path]) -> int:
     """Validate markdown files and mkdocs.yml without publishing."""
 
     print("🔧 Validating docs…")
     directory_tree = load_directory(docs_path)
 
     errors: list[str] = directory_tree.validate()
+
+    for document in directory_tree.documents:
+        try:
+            parse_markdown(document.content)
+        except MarkdownParseError as exc:
+            errors.append(f"{document.relative_path}: {exc}")
 
     if mkdocs_yml:
         nav_tree = load_mkdocs_nav(mkdocs_yml)
@@ -95,8 +105,11 @@ def run_validate(docs_path: Path, mkdocs_yml: Optional[Path]) -> None:
         print("❌ Validation errors:")
         for e in errors:
             print(f" - {e}")
+        print(f"Found {len(errors)} validation error(s).")
+        return 1
     else:
         print("✅ All checks passed.")
+    return 0
 
 
 def build_publish_plan(
@@ -139,7 +152,7 @@ def build_publish_plan(
 def _publish_to_notion(
     directory_tree: DirectoryTree,
     nav_tree: Optional[NavNode],
-    adapter: NotionAdapter,
+    adapter: "NotionAdapter",
     id_map: PageIdMap,
     parent_page_id: Optional[str],
 ) -> None:

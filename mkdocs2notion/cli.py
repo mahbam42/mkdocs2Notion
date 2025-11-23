@@ -109,7 +109,9 @@ def validate(
     - no duplicate page names
     - relative paths are correct
     """
-    run_validate(docs_path, mkdocs_yml)
+    exit_code = run_validate(docs_path, mkdocs_yml)
+    if exit_code:
+        raise typer.Exit(code=exit_code)
 
 
 def main() -> None:
