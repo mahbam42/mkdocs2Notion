@@ -9,7 +9,8 @@ Elements are immutable dataclasses defined in `mkdocs2notion/markdown/elements.p
 Key blocks:
 - `Page` holds an ordered list of child elements and the derived title.
 - `Heading`, `Paragraph`, `List`, `ListItem`, `CodeBlock`, and `Admonition` represent structural blocks.
-- Inline elements include `Text`, `Link`, and `Image`, which appear inside headings, paragraphs, and list items.
+- `List.to_dict()` normalizes the shape by keeping `type: "list"` and an `ordered` flag rather than varying the type value.
+- Inline elements include `Text`, `Link`, and `Image`, which appear inside headings, paragraphs, and list items. Images currently support external URLs; relative/inline file paths are parsed but not resolved or uploaded.
 
 ## Parsing Pipeline
 

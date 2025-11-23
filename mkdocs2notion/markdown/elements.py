@@ -120,7 +120,8 @@ class List(Element):
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "type": "ordered_list" if self.ordered else "unordered_list",
+            "type": self.type,
+            "ordered": self.ordered,
             "items": [item.to_dict() for item in self.items],
         }
 

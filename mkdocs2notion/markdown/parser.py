@@ -13,11 +13,13 @@ from mkdocs2notion.markdown.elements import (
     Image,
     InlineContent,
     Link,
-    List as ListElement,
     ListItem,
     Page,
     Paragraph,
     Text,
+)
+from mkdocs2notion.markdown.elements import (
+    List as ListElement,
 )
 
 

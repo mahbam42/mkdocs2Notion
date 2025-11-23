@@ -7,11 +7,16 @@ import mimetypes
 import os
 import re
 from abc import ABC, abstractmethod
+<<<<<<< HEAD
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 from urllib.parse import urljoin, urlparse
 
 import requests
+=======
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, cast
+from urllib.parse import urlparse
+>>>>>>> c4f4b1a (extended .to_dict(), tightened types, and updated internal documentation)
 
 from notion_client import Client
 from notion_client.errors import APIResponseError
@@ -24,10 +29,12 @@ from mkdocs2notion.markdown.elements import (
     Image,
     InlineContent,
     Link,
-    List as ListElement,
     Page,
     Paragraph,
     Text,
+)
+from mkdocs2notion.markdown.elements import (
+    List as ListElement,
 )
 
 
@@ -168,12 +175,15 @@ class NotionClientAdapter(NotionAdapter):
         self, title: str, parent_page_id: str | None, children: list[dict[str, Any]]
     ) -> str:
         parent = self._build_parent(parent_page_id)
-        result = self.client.pages.create(
-            parent=parent,
-            properties={"title": {"title": [_text_rich(title)]}},
-            children=children,
+        result = cast(
+            dict[str, Any],
+            self.client.pages.create(
+                parent=parent,
+                properties={"title": {"title": [_text_rich(title)]}},
+                children=children,
+            ),
         )
-        return result["id"]
+        return cast(str, result["id"])
 
     def _update_page(
         self,
@@ -190,33 +200,43 @@ class NotionClientAdapter(NotionAdapter):
     def _replace_block_children(
         self, block_id: str, children: list[dict[str, Any]]
     ) -> None:
-        existing = self.client.blocks.children.list(block_id=block_id)
+        existing = cast(dict[str, Any], self.client.blocks.children.list(block_id=block_id))
         for child in existing.get("results", []):
             self.client.blocks.delete(block_id=child["id"])
         if children:
             self.client.blocks.children.append(block_id=block_id, children=children)
 
     def _normalize_blocks(
+<<<<<<< HEAD
         self,
         blocks: List[Any] | Page,
         source_path: Path | None,
         upload_parent: str | None,
         upload_parent_type: str | None,
     ) -> list[dict[str, Any]]:
+=======
+        self, blocks: Sequence[Element] | Sequence[Mapping[str, Any]] | Page
+    ) -> list[dict[str, Any]]:
+        elements: Sequence[Element] | Sequence[Mapping[str, Any]]
+>>>>>>> c4f4b1a (extended .to_dict(), tightened types, and updated internal documentation)
         if isinstance(blocks, Page):
-            elements: Iterable[Element] = blocks.children
+            elements = blocks.children
         else:
             elements = blocks
-        if not isinstance(elements, Iterable):
-            raise TypeError("Blocks payload must be a Page or iterable of elements.")
 
         materialized = list(elements)
+<<<<<<< HEAD
         if materialized and isinstance(materialized[0], dict):
             return [dict(block) for block in materialized]
         resolver = lambda img: self._resolve_image(  # noqa: E731
             img, source_path, upload_parent, upload_parent_type
         )
         return _render_elements(materialized, resolver)
+=======
+        if materialized and all(isinstance(block, Mapping) for block in materialized):
+            return [dict(block) for block in cast(Sequence[Mapping[str, Any]], materialized)]
+        return _render_elements(cast(Sequence[Element], materialized))
+>>>>>>> c4f4b1a (extended .to_dict(), tightened types, and updated internal documentation)
 
     def _build_parent(self, provided_parent: str | None) -> dict[str, Any]:
         parent_raw = provided_parent or self.default_parent_page_id

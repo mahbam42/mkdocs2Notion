@@ -6,7 +6,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Dict, Iterable, List, TypedDict
+from typing import Dict, List, TypedDict
 
 from mkdocs2notion.utils.simple_yaml import safe_load
 
