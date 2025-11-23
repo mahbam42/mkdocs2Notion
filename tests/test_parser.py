@@ -1,4 +1,13 @@
-from mkdocs2notion.markdown.elements import Admonition, CodeBlock, Heading, Image, Link, List, Page, Paragraph
+from mkdocs2notion.markdown.elements import (
+    Admonition,
+    CodeBlock,
+    Heading,
+    Image,
+    Link,
+    List,
+    Page,
+    Paragraph,
+)
 from mkdocs2notion.markdown.parser import parse_markdown
 
 

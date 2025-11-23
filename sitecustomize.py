@@ -1,4 +1,5 @@
 """Automatically load a local .env when working in this repo."""
+
 from __future__ import annotations
 
 import os

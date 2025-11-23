@@ -13,11 +13,13 @@ def main() -> None:
     notion = Client(auth=token)
 
     try:
-        data_sources = notion.search(filter={"property": "object", "value": "data_source"})
+        data_sources = notion.search(
+            filter={"property": "object", "value": "data_source"}
+        )
         pages = notion.search(filter={"property": "object", "value": "page"})
     except APIResponseError as exc:
         raise RuntimeError(f"Notion API call failed: {exc}") from exc
-    
+
     print("✅ Successful Connection")
     print("Databases / Data sources:")
     for d in data_sources["results"]:

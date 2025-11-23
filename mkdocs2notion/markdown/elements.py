@@ -3,6 +3,7 @@
 This module defines structured data classes for a simplified Markdown
 representation that can be serialized for downstream Notion conversion.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -163,7 +164,11 @@ class Page(Element):
     type: str = field(init=False, default="page")
 
     def to_dict(self) -> dict[str, Any]:
-        return {"type": self.type, "title": self.title, "children": [child.to_dict() for child in self.children]}
+        return {
+            "type": self.type,
+            "title": self.title,
+            "children": [child.to_dict() for child in self.children],
+        }
 
 
 def _serialize_inline(inline: InlineContent) -> dict[str, Any]:

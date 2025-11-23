@@ -1,4 +1,5 @@
 """Entry points for running mkdocs2notion operations."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -113,7 +114,10 @@ def build_publish_plan(
     """
 
     if nav_tree is None:
-        return [PublishItem(document=doc, parent_path=None) for doc in directory_tree.documents]
+        return [
+            PublishItem(document=doc, parent_path=None)
+            for doc in directory_tree.documents
+        ]
 
     plan: list[PublishItem] = []
 
@@ -144,7 +148,8 @@ def _publish_to_notion(
     publish_plan = build_publish_plan(directory_tree, nav_tree)
 
     for item in publish_plan:
-        blocks = parse_markdown(item.document.content)
+        parsed_page = parse_markdown(item.document.content)
+        blocks = list(parsed_page.children)
         existing_page_id = id_map.get(item.document.relative_path)
 
         resolved_parent_id = (

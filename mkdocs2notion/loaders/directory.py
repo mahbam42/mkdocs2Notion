@@ -1,4 +1,5 @@
 """Directory scanning utilities for Markdown sources."""
+
 from __future__ import annotations
 
 import os
@@ -48,14 +49,18 @@ class DirectoryTree:
             parts = doc.relative_path.split("/")
             current = structure
             for part in parts[:-1]:
-                current = current["children"].setdefault(part, {"files": [], "children": {}})
+                current = current["children"].setdefault(
+                    part, {"files": [], "children": {}}
+                )
             current["files"].append(doc)
 
         lines: List[str] = [f"{self.root.name}/"]
 
         def _render(node: _RenderNode, indent: int) -> None:
             for file_node in sorted(node["files"], key=lambda d: d.relative_path):
-                lines.append(f"{'  ' * indent}{Path(file_node.relative_path).name} ({file_node.title})")
+                lines.append(
+                    f"{'  ' * indent}{Path(file_node.relative_path).name} ({file_node.title})"
+                )
 
             for name, child in sorted(node["children"].items()):
                 lines.append(f"{'  ' * indent}{name}/")

@@ -1,4 +1,5 @@
 """Persistent mapping between filesystem paths and Notion page IDs."""
+
 from __future__ import annotations
 
 import json
@@ -30,7 +31,9 @@ class PageIdMap:
             try:
                 data = json.loads(mapping_path.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
-                    mapping = {PurePosixPath(k).as_posix(): str(v) for k, v in data.items()}
+                    mapping = {
+                        PurePosixPath(k).as_posix(): str(v) for k, v in data.items()
+                    }
             except (OSError, json.JSONDecodeError):
                 mapping = {}
         return cls(path=mapping_path, map=mapping)

@@ -1,4 +1,5 @@
 """Deterministic Markdown parser for Notion-oriented structures."""
+
 from __future__ import annotations
 
 import re
