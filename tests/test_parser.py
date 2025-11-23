@@ -1,31 +1,54 @@
+from mkdocs2notion.markdown.elements import Admonition, CodeBlock, Heading, Image, Link, List, Page, Paragraph
 from mkdocs2notion.markdown.parser import parse_markdown
 
 
 def test_parse_basic_blocks() -> None:
     content = """# Title
 
-Paragraph text
+Paragraph text with [link](https://example.com).
 
 - item one
 - item two
 """
 
-    blocks = parse_markdown(content)
+    page = parse_markdown(content)
 
-    assert blocks[0] == {"type": "heading", "level": 1, "text": "Title"}
-    assert blocks[1] == {"type": "paragraph", "text": "Paragraph text"}
-    assert blocks[2]["text"] == "item one"
-    assert blocks[3]["text"] == "item two"
+    assert isinstance(page, Page)
+    assert page.title == "Title"
+    assert isinstance(page.children[0], Heading)
+    assert isinstance(page.children[1], Paragraph)
+    assert isinstance(page.children[2], List)
+    paragraph = page.children[1]
+    assert isinstance(paragraph.inlines[1], Link)
 
 
-def test_parse_code_block() -> None:
-    content = """```python
+def test_parse_code_block_and_admonition() -> None:
+    content = """!!! note Reminder
+    important details
+
+```python
 print('hi')
 ```
 """
 
-    blocks = parse_markdown(content)
+    page = parse_markdown(content)
+    admonition = page.children[0]
+    code_block = page.children[1]
 
-    assert blocks[0]["type"] == "code_block"
-    assert "print('hi')" in blocks[0]["text"]
-    assert blocks[0]["language"] == "python"
+    assert isinstance(admonition, Admonition)
+    assert admonition.title == "Reminder"
+    assert isinstance(admonition.content[0], Paragraph)
+
+    assert isinstance(code_block, CodeBlock)
+    assert "print('hi')" in code_block.code
+    assert code_block.language == "python"
+
+
+def test_parse_inline_images() -> None:
+    content = "Inline with image ![alt](images/example.png)"
+
+    page = parse_markdown(content)
+    paragraph = page.children[0]
+
+    assert isinstance(paragraph, Paragraph)
+    assert any(isinstance(inline, Image) for inline in paragraph.inlines)
