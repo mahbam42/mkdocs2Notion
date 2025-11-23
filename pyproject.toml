@@ -41,7 +41,6 @@ python_version = "3.14"
 strict = true
 
 [tool.hatch.envs.default]
-# env_files = [".env"]
 dependencies = [
     "pytest",
     "pytest-cov",
@@ -52,11 +51,10 @@ dependencies = [
     "notion-client",
 ]
 
-# THIS IS THE IMPORTANT PART:
-post-activate = "loadenv"
+[tool.hatch.envs.default.env-vars]
+PYTHONPATH = "."
 
 [tool.hatch.envs.default.scripts]
-loadenv = "zsh -c 'set -a && source .env && set +a'"
 test = "pytest"
 lint = "ruff ."
 lint-fix = "ruff . --fix"
