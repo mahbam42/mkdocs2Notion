@@ -138,15 +138,18 @@ class ListItem(Element):
 
     text: str
     inlines: Sequence[InlineContent] = field(default_factory=tuple)
+    children: Sequence["Element"] = field(default_factory=tuple)
     type: ClassVar[str] = "list_item"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "inlines", _normalize_sequence(self.inlines))
+        object.__setattr__(self, "children", _normalize_sequence(self.children))
 
     def _serialize(self) -> dict[str, Any]:
         return {
             "text": self.text,
             "inlines": [_serialize_inline(inline) for inline in self.inlines],
+            "children": [child.to_dict() for child in self.children],
         }
 
 

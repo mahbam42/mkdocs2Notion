@@ -123,20 +123,49 @@ def _parse_heading(lines: Sequence[str], index: int) -> Tuple[Heading, int]:
 
 
 def _parse_list(lines: Sequence[str], index: int) -> Tuple[ListElement, int]:
-    """Parse consecutive list items into a List element."""
+    """Parse consecutive list items into a List element.
+
+    The parser respects indentation to build nested list hierarchies.
+    """
 
     items: List[ListItem] = []
+    base_indent = _indent_level(lines[index])
     ordered = _is_ordered_list_item(lines[index])
     while index < len(lines):
         line = lines[index]
-        if not _is_list_item(line):
+        if not line.strip():
+            index += 1
             break
+
+        indent = _indent_level(line)
+        if indent < base_indent or not _is_list_item(line):
+            break
+
+        if indent > base_indent:
+            if not items:
+                break
+            nested_list, index = _parse_list(lines, index)
+            parent = items[-1]
+            items[-1] = ListItem(
+                text=parent.text,
+                inlines=parent.inlines,
+                children=tuple((*parent.children, nested_list)),
+            )
+            continue
+
         current_ordered = _is_ordered_list_item(line)
         if current_ordered != ordered:
             break
-        text = _strip_list_marker(line)
+
+        text = _strip_list_marker(line[indent:])
         normalized, inline_content = _parse_inline_formatting(text)
-        items.append(ListItem(text=normalized, inlines=tuple(inline_content)))
+        items.append(
+            ListItem(
+                text=normalized,
+                inlines=tuple(inline_content),
+                children=tuple(),
+            )
+        )
         index += 1
     return ListElement(items=tuple(items), ordered=ordered), index
 
@@ -493,6 +522,12 @@ def _is_list_item(line: str) -> bool:
 
     stripped = line.lstrip()
     return stripped.startswith("- ") or bool(re.match(r"\d+\. ", stripped))
+
+
+def _indent_level(line: str) -> int:
+    """Return the leading space indentation level for a line."""
+
+    return len(line) - len(line.lstrip(" "))
 
 
 def _is_task_item(line: str) -> bool:

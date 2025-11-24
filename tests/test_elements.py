@@ -96,11 +96,13 @@ def test_list_and_list_item_to_dict_with_inlines() -> None:
                 "type": "list_item",
                 "text": "one",
                 "inlines": [{"type": "text", "text": "one"}],
+                "children": [],
             },
             {
                 "type": "list_item",
                 "text": "two",
                 "inlines": [{"type": "link", "text": "two", "target": "#two"}],
+                "children": [],
             },
         ],
     }

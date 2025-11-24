@@ -138,6 +138,35 @@ def test_parse_lists_separates_ordered_and_unordered_blocks() -> None:
     assert [item.text for item in third_list.items] == ["trailing"]
 
 
+def test_parse_nested_lists_preserves_hierarchy() -> None:
+    content = """!!! note
+    - Parent
+        - Child
+            - Grandchild
+    - Sibling
+"""
+
+    page = parse_markdown(content)
+    admonition = page.children[0]
+
+    assert isinstance(admonition, Admonition)
+    nested_list = admonition.content[0]
+    assert isinstance(nested_list, List)
+    parent_item, sibling_item = nested_list.items
+    assert parent_item.text == "Parent"
+    assert len(parent_item.children) == 1
+    child_list = parent_item.children[0]
+    assert isinstance(child_list, List)
+    child_item = child_list.items[0]
+    assert child_item.text == "Child"
+    assert len(child_item.children) == 1
+    grandchild_list = child_item.children[0]
+    assert isinstance(grandchild_list, List)
+    assert [item.text for item in grandchild_list.items] == ["Grandchild"]
+    assert sibling_item.text == "Sibling"
+    assert not sibling_item.children
+
+
 def test_parse_inline_links_handles_nested_parentheses_and_ignores_invalid() -> None:
     content = (
         "Prefix [nested(fun)](http://example.com/path(a,b(c))) middle [broken](missing"

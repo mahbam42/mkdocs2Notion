@@ -123,5 +123,22 @@ def test_nav_structure_injected_into_index(
     assert nav_callout.title == "📚 Navigation"
 
     nav_list = next(block for block in nav_callout.content if isinstance(block, ListElement))
-    link_targets = [inline for item in nav_list.items for inline in item.inlines if isinstance(inline, Link)]
+    guide_item = next(item for item in nav_list.items if item.text == "Guide")
+    assert guide_item.children
+    guide_children = guide_item.children[0]
+    assert isinstance(guide_children, ListElement)
+    assert [child.text for child in guide_children.items] == ["Overview", "Deep Dive"]
+
+    def _collect_links(list_element: ListElement) -> list[Link]:
+        links: list[Link] = []
+        for item in list_element.items:
+            links.extend(
+                inline for inline in item.inlines if isinstance(inline, Link)
+            )
+            for child in item.children:
+                if isinstance(child, ListElement):
+                    links.extend(_collect_links(child))
+        return links
+
+    link_targets = _collect_links(nav_list)
     assert any(link.target.startswith("notion://") for link in link_targets)

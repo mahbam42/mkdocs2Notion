@@ -8,7 +8,7 @@ rich-text assembly and visitor-based traversal of the element tree.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, ClassVar, Sequence
 
 from mkdocs2notion.markdown.elements import (
@@ -86,11 +86,15 @@ class ListItemBlock(NotionBlock):
 
     ordered: bool
     rich_text: Sequence[dict[str, Any]]
+    children: Sequence[dict[str, Any]] = field(default_factory=tuple)
     type: ClassVar[str] = "list_item"
 
     def to_dict(self) -> dict[str, Any]:
         block_type = "numbered_list_item" if self.ordered else "bulleted_list_item"
-        return {"type": block_type, block_type: {"rich_text": list(self.rich_text)}}
+        payload: dict[str, Any] = {"rich_text": list(self.rich_text)}
+        if self.children:
+            payload["children"] = list(self.children)
+        return {"type": block_type, block_type: payload}
 
     def _serialize(self) -> dict[str, Any]:  # pragma: no cover - delegated in to_dict
         return {"rich_text": list(self.rich_text)}
@@ -251,8 +255,15 @@ def _serialize_element(
             rich_text, image_blocks = _render_text_and_images(
                 list_item.inlines, list_item.text, resolve_image
             )
+            child_blocks: list[dict[str, Any]] = []
+            for child in list_item.children:
+                child_blocks.extend(_serialize_element(child, resolve_image))
             list_blocks.append(
-                ListItemBlock(ordered=element.ordered, rich_text=rich_text).to_dict()
+                ListItemBlock(
+                    ordered=element.ordered,
+                    rich_text=rich_text,
+                    children=child_blocks,
+                ).to_dict()
             )
             list_blocks.extend(image_blocks)
         return list_blocks

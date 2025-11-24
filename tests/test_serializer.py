@@ -79,6 +79,29 @@ def test_ordered_list_items_generate_numbered_blocks() -> None:
     assert blocks[0]["numbered_list_item"]["rich_text"][0]["text"]["content"] == "First"
 
 
+def test_nested_list_items_render_as_children() -> None:
+    nested_list = List(
+        items=(ListItem(text="Child", inlines=(Text(text="Child"),)),)
+    )
+    parent_item = ListItem(
+        text="Parent",
+        inlines=(Text(text="Parent"),),
+        children=(nested_list,),
+    )
+    list_element = List(items=(parent_item,), ordered=False)
+
+    blocks = serialize_elements([list_element], _stub_resolve_image)
+
+    assert blocks[0]["type"] == "bulleted_list_item"
+    children = blocks[0]["bulleted_list_item"]["children"]
+    assert children
+    assert children[0]["type"] == "bulleted_list_item"
+    assert (
+        children[0]["bulleted_list_item"]["rich_text"][0]["text"]["content"]
+        == "Child"
+    )
+
+
 def test_code_block_defaults_language() -> None:
     code_block = CodeBlock(language=None, code="print('hi')")
 

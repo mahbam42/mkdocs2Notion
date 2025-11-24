@@ -359,6 +359,9 @@ def _rewrite_internal_links(
                     ListItem(
                         text=item.text,
                         inlines=tuple(_rewrite_inline(i) for i in item.inlines),
+                        children=tuple(
+                            _rewrite_element(child) for child in item.children
+                        ),
                     )
                     for item in element.items
                 ),
