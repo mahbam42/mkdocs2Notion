@@ -26,21 +26,8 @@ import requests
 from notion_client import Client
 from notion_client.errors import APIResponseError
 
-from mkdocs2notion.markdown.elements import (
-    Admonition,
-    CodeBlock,
-    Element,
-    Heading,
-    Image,
-    InlineContent,
-    Link,
-    Page,
-    Paragraph,
-    Text,
-)
-from mkdocs2notion.markdown.elements import (
-    List as ListElement,
-)
+from mkdocs2notion.markdown.elements import Element, Image, Page
+from mkdocs2notion.notion.serializer import serialize_elements, text_rich
 
 
 class NotionAdapter(ABC):
@@ -192,7 +179,7 @@ class NotionClientAdapter(NotionAdapter):
             dict[str, Any],
             self.client.pages.create(
                 parent=parent,
-                properties={"title": {"title": [_text_rich(title)]}},
+                properties={"title": {"title": [text_rich(title)]}},
                 children=children,
             ),
         )
@@ -206,7 +193,7 @@ class NotionClientAdapter(NotionAdapter):
     ) -> None:
         if title:
             self.client.pages.update(
-                page_id=page_id, properties={"title": {"title": [_text_rich(title)]}}
+                page_id=page_id, properties={"title": {"title": [text_rich(title)]}}
             )
         self._replace_block_children(block_id=page_id, children=children)
 
@@ -243,7 +230,7 @@ class NotionClientAdapter(NotionAdapter):
         resolver = lambda img: self._resolve_image(  # noqa: E731
             img, source_path, upload_parent, upload_parent_type
         )
-        return _render_elements(cast(Sequence[Element], materialized), resolver)
+        return serialize_elements(cast(Sequence[Element], materialized), resolver)
 
     def _build_parent(self, provided_parent: str | None) -> dict[str, Any]:
         parent_raw = provided_parent or self.default_parent_page_id
@@ -367,40 +354,6 @@ class NotionClientAdapter(NotionAdapter):
         )
 
 
-def _render_text_and_images(
-    inlines: Sequence[InlineContent],
-    fallback_text: str,
-    resolve_image: Callable[[Image], dict[str, Any]],
-) -> Tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """
-    Build Notion rich text payload and collect image blocks for inline images.
-
-    Images become separate Notion image blocks to render visually instead of as links.
-    """
-
-    rich_text: list[dict[str, Any]] = []
-    image_blocks: list[dict[str, Any]] = []
-
-    if not inlines:
-        return [_text_rich(fallback_text)], []
-
-    for inline in inlines:
-        if isinstance(inline, Text):
-            rich_text.append(_text_rich(inline.text))
-        elif isinstance(inline, Link):
-            url = inline.target if _is_valid_url(inline.target) else None
-            rich_text.append(_text_rich(inline.text, url))
-        elif isinstance(inline, Image):
-            image_blocks.append(resolve_image(inline))
-        else:
-            rich_text.append(_text_rich(fallback_text))
-
-    if not rich_text:
-        rich_text = [_text_rich(fallback_text)]
-
-    return rich_text, image_blocks
-
-
 def _normalize_parent_id(raw_id: str) -> str:
     """Extract the canonical Notion ID from a URL, slug, or raw ID."""
 
@@ -412,130 +365,6 @@ def _normalize_parent_id(raw_id: str) -> str:
     return (
         f"{hex_id[0:8]}-{hex_id[8:12]}-{hex_id[12:16]}-{hex_id[16:20]}-{hex_id[20:32]}"
     )
-
-
-def _render_elements(
-    elements: Sequence[Element],
-    resolve_image: Callable[[Image], dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Convert parsed elements into Notion block payloads."""
-
-    blocks: list[dict[str, Any]] = []
-    for element in elements:
-        blocks.extend(_render_element(element, resolve_image))
-    return blocks
-
-
-def _render_element(
-    element: Element,
-    resolve_image: Callable[[Image], dict[str, Any]],
-) -> list[dict[str, Any]]:
-    if isinstance(element, Heading):
-        heading_type = {1: "heading_1", 2: "heading_2"}.get(element.level, "heading_3")
-        rich_text, image_blocks = _render_text_and_images(
-            element.inlines, element.text, resolve_image
-        )
-        heading_blocks: list[dict[str, Any]] = [
-            {
-                "type": heading_type,
-                heading_type: {
-                    "rich_text": rich_text,
-                },
-            }
-        ]
-        heading_blocks.extend(image_blocks)
-        return heading_blocks
-
-    if isinstance(element, Paragraph):
-        rich_text, image_blocks = _render_text_and_images(
-            element.inlines, element.text, resolve_image
-        )
-        paragraph_blocks: list[dict[str, Any]] = [
-            {"type": "paragraph", "paragraph": {"rich_text": rich_text}}
-        ]
-        paragraph_blocks.extend(image_blocks)
-        return paragraph_blocks
-
-    if isinstance(element, ListElement):
-        block_type = "numbered_list_item" if element.ordered else "bulleted_list_item"
-        return [
-            {
-                "type": block_type,
-                block_type: {
-                    "rich_text": _rich_text_from_inlines(item.inlines, item.text)
-                },
-            }
-            for item in element.items
-        ]
-
-    if isinstance(element, CodeBlock):
-        return [
-            {
-                "type": "code",
-                "code": {
-                    "language": element.language or "plain text",
-                    "rich_text": [_text_rich(element.code)],
-                },
-            }
-        ]
-
-    if isinstance(element, Admonition):
-        children: list[dict[str, Any]] = []
-        for child in element.content:
-            children.extend(_render_element(child, resolve_image))
-        headline = element.title or element.kind.title()
-        return [
-            {
-                "type": "callout",
-                "callout": {
-                    "icon": _callout_icon(element.kind),
-                    "rich_text": _rich_text_from_inlines(
-                        [Text(text=headline)], headline
-                    ),
-                    "children": children,
-                },
-            }
-        ]
-
-    # Fallback: render unknown element as a paragraph of text
-    return [
-        {
-            "type": "paragraph",
-            "paragraph": {"rich_text": [_text_rich(str(element))]},
-        }
-    ]
-
-
-def _callout_icon(kind: str) -> dict[str, str]:
-    lookup = {"warning": "⚠️", "note": "💡", "tip": "💡", "info": "ℹ️"}
-    return {"type": "emoji", "emoji": lookup.get(kind.lower(), "💬")}
-
-
-def _rich_text_from_inlines(
-    inlines: Sequence[InlineContent], fallback_text: str
-) -> list[dict[str, Any]]:
-    if not inlines:
-        return [_text_rich(fallback_text)]
-
-    parts: list[dict[str, Any]] = []
-    for inline in inlines:
-        if isinstance(inline, Text):
-            parts.append(_text_rich(inline.text))
-        elif isinstance(inline, Link):
-            url = inline.target if _is_valid_url(inline.target) else None
-            parts.append(_text_rich(inline.text, url))
-        elif isinstance(inline, Image):
-            alt = inline.alt or inline.src
-            url = inline.src if _is_valid_url(inline.src) else None
-            parts.append(_text_rich(alt, url))
-    return parts
-
-
-def _text_rich(content: str, url: str | None = None) -> dict[str, Any]:
-    text: dict[str, Any] = {"content": content}
-    if url:
-        text["link"] = {"url": url}
-    return {"type": "text", "text": text}
 
 
 def _is_valid_url(url: str) -> bool:
@@ -556,7 +385,7 @@ def _image_block(
     else:
         raise RuntimeError("Unsupported image payload returned from upload.")
 
-    image_payload["caption"] = [_text_rich(caption)]
+    image_payload["caption"] = [text_rich(caption)]
     return {"type": "image", "image": image_payload}
 
 
