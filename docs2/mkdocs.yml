@@ -4,6 +4,5 @@ nav:
   - Tutorials:
       - Getting Started: tutorials/getting-started.md
       - Advanced Paths: tutorials/advanced-topics.md
-      - broken path: tootrials/advanced-topics.md
       - Not there: tutorials/missing.md 
   - API: api.md

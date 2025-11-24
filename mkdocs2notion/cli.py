@@ -113,6 +113,7 @@ def push(
     fresh: bool = typer.Option(
         False,
         "--fresh",
+        "-f",
         help="Ignore cached Notion page IDs when pushing.",
     ),
 ) -> None:
