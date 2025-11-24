@@ -1,16 +1,86 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Optional
 
 import typer
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskID,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
-from .runner import run_dry_run, run_push, run_validate
+from .runner import PublishProgress, run_dry_run, run_push, run_validate
+
+if TYPE_CHECKING:
+    from .loaders.directory import DocumentNode
 
 app = typer.Typer(
     name="mkdocs2notion",
     help="Publish Markdown directories (optionally using mkdocs.yml) into Notion.",
     add_completion=True,
 )
+
+console = Console()
+
+
+class RichPublishProgress(PublishProgress):
+    """Render an animated progress bar while publishing documents."""
+
+    def __init__(self, console: Console) -> None:
+        """Initialize the progress renderer.
+
+        Args:
+            console: Console used to display progress output.
+        """
+        self.console = console
+        self._progress: Optional[Progress] = None
+        self._task_id: Optional[TaskID] = None
+
+    def start(self, total: int) -> None:
+        """Start the animated progress bar.
+
+        Args:
+            total: Total number of documents to publish.
+        """
+        self._progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total} pages"),
+            TimeElapsedColumn(),
+            console=self.console,
+            transient=True,
+        )
+        self._progress.start()
+        self._task_id = self._progress.add_task("Pushing to Notion", total=total)
+
+    def advance(self, document: "DocumentNode") -> None:
+        """Advance the bar for a published document.
+
+        Args:
+            document: Document that has just been published.
+        """
+        if not self._progress or self._task_id is None:
+            return
+
+        self._progress.update(
+            self._task_id, description=f"Pushing {document.relative_path}"
+        )
+        self._progress.advance(self._task_id)
+
+    def finish(self) -> None:
+        """Stop rendering the progress bar."""
+        if not self._progress:
+            return
+
+        self._progress.stop()
+        self._progress = None
+        self._task_id = None
 
 
 @app.command("push")
@@ -53,7 +123,8 @@ def push(
         mkdocs2notion push docs/ --fresh
 
     """
-    run_push(docs_path, mkdocs_yml, parent_page_id, fresh=fresh)
+    progress = RichPublishProgress(console)
+    run_push(docs_path, mkdocs_yml, parent_page_id, fresh=fresh, progress=progress)
 
 
 @app.command("dry-run")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Protocol
 
 from .loaders.directory import DirectoryTree, DocumentNode, load_directory
 from .loaders.id_map import PageIdMap
@@ -13,6 +13,27 @@ from .markdown.parser import MarkdownParseError, parse_markdown
 
 if TYPE_CHECKING:  # pragma: no cover
     from .notion.api_adapter import NotionAdapter
+
+
+class PublishProgress(Protocol):
+    """Reporting hook for publishing progress."""
+
+    def start(self, total: int) -> None:
+        """Begin tracking publish progress.
+
+        Args:
+            total: Total number of documents that will be published.
+        """
+
+    def advance(self, document: DocumentNode) -> None:
+        """Advance the progress tracker when a document is published.
+
+        Args:
+            document: Document that has just been published.
+        """
+
+    def finish(self) -> None:
+        """Finalize progress tracking."""
 
 
 @dataclass
@@ -28,6 +49,7 @@ def run_push(
     mkdocs_yml: Optional[Path],
     parent_page_id: Optional[str] = None,
     fresh: bool = False,
+    progress: PublishProgress | None = None,
 ) -> None:
     """
     Push a directory of Markdown files to Notion.
@@ -59,6 +81,7 @@ def run_push(
         adapter=adapter,
         id_map=id_map,
         parent_page_id=parent_page_id,
+        progress=progress,
     )
 
     id_map.save()
@@ -156,24 +179,35 @@ def _publish_to_notion(
     adapter: "NotionAdapter",
     id_map: PageIdMap,
     parent_page_id: Optional[str],
+    progress: PublishProgress | None = None,
 ) -> None:
     """Publish documents to Notion respecting navigation ordering."""
 
     publish_plan = build_publish_plan(directory_tree, nav_tree)
 
-    for item in publish_plan:
-        parsed_page = parse_markdown(item.document.content)
-        blocks = list(parsed_page.children)
-        existing_page_id = id_map.get(item.document.relative_path)
+    if progress:
+        progress.start(len(publish_plan))
 
-        resolved_parent_id = (
-            id_map.get(item.parent_path) if item.parent_path else parent_page_id
-        )
-        page_id = adapter.create_or_update_page(
-            title=item.document.title,
-            parent_page_id=resolved_parent_id,
-            page_id=existing_page_id,
-            blocks=blocks,
-            source_path=item.document.path,
-        )
-        id_map.set(item.document.relative_path, page_id)
+    try:
+        for item in publish_plan:
+            parsed_page = parse_markdown(item.document.content)
+            blocks = list(parsed_page.children)
+            existing_page_id = id_map.get(item.document.relative_path)
+
+            resolved_parent_id = (
+                id_map.get(item.parent_path) if item.parent_path else parent_page_id
+            )
+            page_id = adapter.create_or_update_page(
+                title=item.document.title,
+                parent_page_id=resolved_parent_id,
+                page_id=existing_page_id,
+                blocks=blocks,
+                source_path=item.document.path,
+            )
+            id_map.set(item.document.relative_path, page_id)
+
+            if progress:
+                progress.advance(item.document)
+    finally:
+        if progress:
+            progress.finish()

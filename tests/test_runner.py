@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any, List, Optional
 
-from mkdocs2notion.loaders.directory import load_directory
+from mkdocs2notion.loaders.directory import DocumentNode, load_directory
 from mkdocs2notion.loaders.id_map import PageIdMap
 from mkdocs2notion.loaders.mkdocs_nav import load_mkdocs_nav
 from mkdocs2notion.notion.api_adapter import NotionAdapter
@@ -29,6 +29,22 @@ class RecordingAdapter(NotionAdapter):
 
     def get_page(self, page_id: str) -> Any:  # pragma: no cover - not used in tests
         return {"id": page_id}
+
+
+class RecordingProgress:
+    def __init__(self) -> None:
+        self.started_with: int | None = None
+        self.advanced: list[str] = []
+        self.finished = False
+
+    def start(self, total: int) -> None:
+        self.started_with = total
+
+    def advance(self, document: DocumentNode) -> None:
+        self.advanced.append(document.relative_path)
+
+    def finish(self) -> None:
+        self.finished = True
 
 
 def test_build_publish_plan_uses_nav(sample_docs_path: Path) -> None:
@@ -59,3 +75,24 @@ def test_publish_to_notion_sets_ids(sample_docs_path: Path, tmp_path: Path) -> N
     assert id_map.get("nested/deep.md") is not None
     # parent relationship for nested entry should target provided root when no parent path
     assert adapter.created[2][1] == "root"
+
+
+def test_publish_reports_progress(sample_docs_path: Path, tmp_path: Path) -> None:
+    directory_tree = load_directory(sample_docs_path)
+    nav_tree = load_mkdocs_nav(sample_docs_path / "mkdocs.yml")
+    adapter = RecordingAdapter()
+    id_map = PageIdMap(path=tmp_path / "ids.json")
+    progress = RecordingProgress()
+
+    _publish_to_notion(
+        directory_tree,
+        nav_tree,
+        adapter,
+        id_map,
+        parent_page_id="root",
+        progress=progress,
+    )
+
+    assert progress.started_with == 3
+    assert progress.advanced == ["index.md", "guide.md", "nested/deep.md"]
+    assert progress.finished

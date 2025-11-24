@@ -63,7 +63,7 @@ PYTHONPATH = "."
 
 [tool.hatch.envs.default.scripts]
 test = "pytest"
-lint = "ruff check -v"
-lint-fix = "ruff format"
+lint = "ruff check"
+lint-fix = "ruff check --fix"
 typecheck = "mypy mkdocs2notion"
-check = ["lint", "typecheck", "test"]
+checks = ["lint", "typecheck", "test"]
