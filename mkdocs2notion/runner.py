@@ -317,9 +317,19 @@ def _rewrite_internal_links(
 
     def _rewrite_inline(inline: InlineContent) -> InlineContent:
         if isinstance(inline, Link):
-            target_id = _resolve_link(inline.target) if nav_tree else None
+            if not nav_tree:
+                return inline
+            if inline.target.startswith("#"):
+                return inline
+            if inline.target.startswith(("http://", "https://", "mailto:", "tel:")):
+                return inline
+            if "://" in inline.target and not inline.target.startswith("nav://"):
+                return inline
+
+            target_id = _resolve_link(inline.target)
             if target_id:
                 return Link(text=inline.text, target=f"notion://{target_id}")
+
             unresolved.append(inline.target)
             return Text(text=inline.text)
         if isinstance(inline, Strikethrough) and inline.inlines:
@@ -392,14 +402,14 @@ def _rewrite_internal_links(
                                 inlines=tuple(
                                     _rewrite_inline(inline) for inline in cell.inlines
                                 ),
-                                is_header=cell.is_header,
                             )
                             for cell in row.cells
                         ),
                         is_header=row.is_header,
                     )
                     for row in element.rows
-                )
+                ),
+                caption=element.caption,
             )
         return element
 
