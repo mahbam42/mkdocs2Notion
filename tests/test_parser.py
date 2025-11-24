@@ -140,8 +140,7 @@ def test_parse_lists_separates_ordered_and_unordered_blocks() -> None:
 
 def test_parse_inline_links_handles_nested_parentheses_and_ignores_invalid() -> None:
     content = (
-        "Prefix [nested(fun)](http://example.com/path(a,b(c))) middle "
-        "[broken](missing"
+        "Prefix [nested(fun)](http://example.com/path(a,b(c))) middle [broken](missing"
     )
 
     page = parse_markdown(content)
