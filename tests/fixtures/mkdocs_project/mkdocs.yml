@@ -1,0 +1,8 @@
+site_name: Fixture Docs
+docs_dir: documentation
+nav:
+  - Intro: index.md
+  - Tutorials:
+      - First: guide/first.md
+      - Second: guide/second.md
+  - Reference: reference.md

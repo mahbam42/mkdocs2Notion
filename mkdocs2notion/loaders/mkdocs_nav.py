@@ -54,6 +54,24 @@ class NavNode:
         _walk(self, set())
         return errors
 
+    def referenced_files(self) -> list[str]:
+        """Return all file paths referenced by this navigation tree.
+
+        Returns:
+            list[str]: File paths gathered in the order they appear in ``nav``.
+        """
+
+        files: list[str] = []
+
+        def _walk(node: NavNode) -> None:
+            if node.file:
+                files.append(node.file)
+            for child in node.children:
+                _walk(child)
+
+        _walk(self)
+        return files
+
     def pretty(self) -> str:
         """Return a formatted representation of the navigation tree."""
 
@@ -76,17 +94,18 @@ class NavNode:
         return "\n".join(lines)
 
 
-def load_mkdocs_nav(path: Path) -> NavNode:
+def load_mkdocs_nav(path: Path, *, config: dict[str, Any] | None = None) -> NavNode:
     """Parse mkdocs.yml and return a navigation tree.
 
     Args:
         path: Path to ``mkdocs.yml``.
+        config: Optional pre-parsed mkdocs configuration.
 
     Returns:
         NavNode: Root navigation node whose children mirror mkdocs ordering.
     """
 
-    data = safe_load(path.read_text(encoding="utf-8")) or {}
+    data = config if config is not None else safe_load(path.read_text(encoding="utf-8")) or {}
     nav_config = data.get("nav")
     if nav_config is None:
         return NavNode(title="root")

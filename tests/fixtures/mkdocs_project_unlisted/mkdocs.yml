@@ -1,0 +1,5 @@
+site_name: Fixture Docs
+docs_dir: documentation
+nav:
+  - Intro: index.md
+  - Missing: missing.md
