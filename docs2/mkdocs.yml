@@ -1,0 +1,7 @@
+site_name: Docs2 Sample
+nav:
+  - Welcome: index.md
+  - Tutorials:
+      - Getting Started: tutorials/getting-started.md
+      - Advanced Paths: tutorials/advanced-topics.md
+  - API: api.md

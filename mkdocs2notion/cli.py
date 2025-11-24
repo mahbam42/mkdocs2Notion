@@ -88,9 +88,12 @@ def push(
     docs_path: Path = typer.Argument(
         ...,
         exists=True,
-        file_okay=False,
+        file_okay=True,
         dir_okay=True,
-        help="Path to the directory containing markdown files.",
+        help=(
+            "Path to a MkDocs project root, mkdocs.yml file, or directory "
+            "containing markdown files."
+        ),
     ),
     mkdocs_yml: Path | None = typer.Option(
         None,
@@ -132,9 +135,12 @@ def dry_run(
     docs_path: Path = typer.Argument(
         ...,
         exists=True,
-        file_okay=False,
+        file_okay=True,
         dir_okay=True,
-        help="Path to the directory containing markdown files.",
+        help=(
+            "Path to a MkDocs project root, mkdocs.yml file, or directory "
+            "containing markdown files."
+        ),
     ),
     mkdocs_yml: Path | None = typer.Option(
         None,
@@ -162,9 +168,12 @@ def validate(
     docs_path: Path = typer.Argument(
         ...,
         exists=True,
-        file_okay=False,
+        file_okay=True,
         dir_okay=True,
-        help="Path to documentation folder.",
+        help=(
+            "Path to a MkDocs project root, mkdocs.yml file, or directory "
+            "containing markdown files."
+        ),
     ),
     mkdocs_yml: Path | None = typer.Option(
         None,

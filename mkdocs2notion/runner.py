@@ -6,9 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Protocol
 
-from .loaders.directory import DirectoryTree, DocumentNode, load_directory
+from .loaders.directory import DirectoryTree, DocumentNode
 from .loaders.id_map import PageIdMap
-from .loaders.mkdocs_nav import NavNode, load_mkdocs_nav
+from .loaders.mkdocs_nav import NavNode
+from .loaders.mkdocs_project import MkdocsProject, load_mkdocs_project
 from .markdown.parser import MarkdownParseError, parse_markdown
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -64,20 +65,18 @@ def run_push(
 
     adapter = get_default_adapter()
 
-    print(f"📁 Loading markdown directory: {docs_path}")
-    directory_tree = load_directory(docs_path)
+    project: MkdocsProject = load_mkdocs_project(docs_path, mkdocs_yml)
 
-    nav_tree = None
-    if mkdocs_yml:
-        print(f"📄 Loading mkdocs.yml navigation: {mkdocs_yml}")
-        nav_tree = load_mkdocs_nav(mkdocs_yml)
+    print(f"📁 Loading markdown directory: {project.docs_path}")
+    if project.mkdocs_yml:
+        print(f"📄 Loading mkdocs.yml navigation: {project.mkdocs_yml}")
 
-    id_map = PageIdMap.from_default_location(docs_path, ignore_existing=fresh)
+    id_map = PageIdMap.from_default_location(project.docs_path, ignore_existing=fresh)
 
     print("📝 Pushing documents to Notion…")
     _publish_to_notion(
-        directory_tree=directory_tree,
-        nav_tree=nav_tree,
+        directory_tree=project.directory_tree,
+        nav_tree=project.nav_tree,
         adapter=adapter,
         id_map=id_map,
         parent_page_id=parent_page_id,
@@ -92,17 +91,14 @@ def run_dry_run(docs_path: Path, mkdocs_yml: Optional[Path]) -> None:
     """Print what the tool *would* do without contacting the Notion API."""
 
     print("🔎 Dry run: scanning directory…")
-    directory_tree = load_directory(docs_path)
+    project: MkdocsProject = load_mkdocs_project(docs_path, mkdocs_yml)
 
-    if mkdocs_yml:
-        nav_tree = load_mkdocs_nav(mkdocs_yml)
+    if project.mkdocs_yml:
         print("🔍 Using mkdocs.yml structure:")
-        print(nav_tree.pretty())
-    else:
-        nav_tree = None
+        print(project.nav_tree.pretty())
 
     print("📄 Directory structure:")
-    print(directory_tree.pretty())
+    print(project.pretty_nav())
 
     print("\n(no changes made)")
 
@@ -111,19 +107,15 @@ def run_validate(docs_path: Path, mkdocs_yml: Optional[Path]) -> int:
     """Validate markdown files and mkdocs.yml without publishing."""
 
     print("🔧 Validating docs…")
-    directory_tree = load_directory(docs_path)
+    project: MkdocsProject = load_mkdocs_project(docs_path, mkdocs_yml)
 
-    errors: list[str] = directory_tree.validate()
+    errors = project.validate_structure()
 
-    for document in directory_tree.documents:
+    for document in project.directory_tree.documents:
         try:
             parse_markdown(document.content)
         except MarkdownParseError as exc:
             errors.append(f"{document.relative_path}: {exc}")
-
-    if mkdocs_yml:
-        nav_tree = load_mkdocs_nav(mkdocs_yml)
-        errors.extend(nav_tree.validate(directory_tree))
 
     if errors:
         print("❌ Validation errors:")
