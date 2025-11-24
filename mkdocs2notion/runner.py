@@ -183,7 +183,8 @@ def _publish_to_notion(
 
     try:
         for item in publish_plan:
-            parsed_page = parse_markdown(item.document.content)
+            content = _prepare_document_content(item.document, nav_tree)
+            parsed_page = parse_markdown(content)
             blocks = list(parsed_page.children)
             existing_page_id = id_map.get(item.document.relative_path)
 
@@ -204,3 +205,31 @@ def _publish_to_notion(
     finally:
         if progress:
             progress.finish()
+
+
+def _prepare_document_content(
+    document: DocumentNode, nav_tree: Optional[NavNode]
+) -> str:
+    """Return the Markdown content to send to Notion.
+
+    When an mkdocs navigation tree is available, the navigation outline is
+    appended to ``index.md`` so Notion readers can see the intended structure.
+
+    Args:
+        document: Document being published.
+        nav_tree: Optional mkdocs navigation tree.
+
+    Returns:
+        str: Markdown content with navigation injected when applicable.
+    """
+
+    if not nav_tree or document.relative_path != "index.md":
+        return document.content
+
+    nav_listing = nav_tree.to_markdown_listing()
+    if not nav_listing:
+        return document.content
+
+    base_content = document.content.rstrip()
+    spacer = "\n\n" if base_content else ""
+    return f"{base_content}{spacer}{nav_listing}\n"
