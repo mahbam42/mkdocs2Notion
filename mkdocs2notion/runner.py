@@ -93,9 +93,10 @@ def run_dry_run(docs_path: Path, mkdocs_yml: Optional[Path]) -> None:
     print("🔎 Dry run: scanning directory…")
     project: MkdocsProject = load_mkdocs_project(docs_path, mkdocs_yml)
 
-    if project.mkdocs_yml:
+    nav_tree = project.nav_tree
+    if project.mkdocs_yml and nav_tree:
         print("🔍 Using mkdocs.yml structure:")
-        print(project.nav_tree.pretty())
+        print(nav_tree.pretty())
 
     print("📄 Directory structure:")
     print(project.pretty_nav())

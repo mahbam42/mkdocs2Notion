@@ -3,6 +3,8 @@ from typing import ClassVar
 from mkdocs2notion.markdown.elements import (
     Admonition,
     CodeBlock,
+    DefinitionItem,
+    DefinitionList,
     Element,
     Heading,
     Image,
@@ -11,6 +13,12 @@ from mkdocs2notion.markdown.elements import (
     ListItem,
     Page,
     Paragraph,
+    Strikethrough,
+    Table,
+    TableCell,
+    TableRow,
+    TaskItem,
+    TaskList,
     Text,
 )
 
@@ -39,14 +47,11 @@ def test_inline_elements_to_dict() -> None:
         "src": "img.png",
         "alt": "diagram",
     }
-<<<<<<< HEAD
-=======
     assert Strikethrough(text="crossed", inlines=[Text(text="crossed")]).to_dict() == {
         "type": "strikethrough",
         "text": "crossed",
         "inlines": [{"type": "text", "text": "crossed"}],
     }
->>>>>>> cf611b4 (strikethrough, tables, todo list, and dictionary lists now supported)
 
 
 def test_heading_and_paragraph_serialize_inlines() -> None:
@@ -103,6 +108,35 @@ def test_list_and_list_item_to_dict_with_inlines() -> None:
     assert all(isinstance(item.inlines, tuple) for item in list_element.items)
 
 
+def test_task_list_to_dict_with_checked_items() -> None:
+    task_list = TaskList(
+        items=[
+            TaskItem(text="done", checked=True, inlines=[Text(text="done")]),
+            TaskItem(text="todo", checked=False, inlines=[Text(text="todo")]),
+        ]
+    )
+
+    assert task_list.to_dict() == {
+        "type": "task_list",
+        "items": [
+            {
+                "type": "task_item",
+                "text": "done",
+                "checked": True,
+                "inlines": [{"type": "text", "text": "done"}],
+            },
+            {
+                "type": "task_item",
+                "text": "todo",
+                "checked": False,
+                "inlines": [{"type": "text", "text": "todo"}],
+            },
+        ],
+    }
+    assert isinstance(task_list.items, tuple)
+    assert all(isinstance(item.inlines, tuple) for item in task_list.items)
+
+
 def test_code_block_to_dict_allows_missing_language() -> None:
     code_block = CodeBlock(language=None, code="print('hi')")
 
@@ -133,6 +167,35 @@ def test_admonition_to_dict_with_nested_content() -> None:
         ],
     }
     assert isinstance(admonition.content, tuple)
+
+
+def test_definition_list_to_dict_with_descriptions() -> None:
+    definition_list = DefinitionList(
+        items=[
+            DefinitionItem(
+                term="Foo",
+                descriptions=[Paragraph(text="Definition text")],
+                inlines=[Text(text="Foo")],
+            )
+        ]
+    )
+
+    assert definition_list.to_dict() == {
+        "type": "definition_list",
+        "items": [
+            {
+                "type": "definition_item",
+                "term": "Foo",
+                "inlines": [{"type": "text", "text": "Foo"}],
+                "descriptions": [
+                    {"type": "paragraph", "text": "Definition text", "inlines": []}
+                ],
+            }
+        ],
+    }
+    assert isinstance(definition_list.items, tuple)
+    assert isinstance(definition_list.items[0].descriptions, tuple)
+    assert isinstance(definition_list.items[0].inlines, tuple)
 
 
 def test_page_to_dict_includes_children() -> None:
@@ -167,8 +230,6 @@ def test_page_to_dict_includes_children() -> None:
     assert isinstance(page.children, tuple)
 
 
-<<<<<<< HEAD
-=======
 def test_table_to_dict_with_caption_and_header() -> None:
     table = Table(
         caption="Example",
@@ -231,13 +292,25 @@ def test_table_to_dict_with_caption_and_header() -> None:
     assert isinstance(table.rows[0].cells, tuple)
 
 
->>>>>>> cf611b4 (strikethrough, tables, todo list, and dictionary lists now supported)
 def test_sequences_are_normalized_to_tuples() -> None:
     list_element = List(items=[ListItem(text="alpha"), ListItem(text="beta")])
     admonition = Admonition(kind="note", title="Title", content=[Paragraph(text="p")])
     page = Page(title="Doc", children=[Paragraph(text="p")])
+    task_list = TaskList(items=[TaskItem(text="alpha", checked=True)])
+    definition_list = DefinitionList(
+        items=[DefinitionItem(term="term", descriptions=[Paragraph(text="desc")])]
+    )
+    table = Table(
+        rows=[TableRow(cells=[TableCell(text="cell")], is_header=True)],
+    )
 
     assert isinstance(list_element.items, tuple)
     assert all(isinstance(item.inlines, tuple) for item in list_element.items)
     assert isinstance(admonition.content, tuple)
     assert isinstance(page.children, tuple)
+    assert isinstance(task_list.items, tuple)
+    assert all(isinstance(item.inlines, tuple) for item in task_list.items)
+    assert isinstance(definition_list.items, tuple)
+    assert isinstance(definition_list.items[0].descriptions, tuple)
+    assert isinstance(table.rows, tuple)
+    assert isinstance(table.rows[0].cells, tuple)

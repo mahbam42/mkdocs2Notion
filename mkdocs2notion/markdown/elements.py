@@ -68,9 +68,6 @@ class Image(Element):
         return {"src": self.src, "alt": self.alt}
 
 
-<<<<<<< HEAD
-InlineContent = Text | Link | Image
-=======
 @dataclass(frozen=True)
 class Strikethrough(Element):
     """Inline strikethrough span.
@@ -95,7 +92,6 @@ class Strikethrough(Element):
 
 
 InlineContent = Text | Link | Image | Strikethrough
->>>>>>> cf611b4 (strikethrough, tables, todo list, and dictionary lists now supported)
 
 
 @dataclass(frozen=True)
@@ -222,8 +218,6 @@ class Page(Element):
         }
 
 
-<<<<<<< HEAD
-=======
 @dataclass(frozen=True)
 class TaskItem(Element):
     """Task list item with completion state.
@@ -382,7 +376,6 @@ class Table(Element):
         }
 
 
->>>>>>> cf611b4 (strikethrough, tables, todo list, and dictionary lists now supported)
 def _serialize_inline(inline: InlineContent) -> dict[str, Any]:
     """Serialize an inline element consistently."""
 
@@ -400,6 +393,8 @@ def _normalize_sequence(items: Sequence[T] | None) -> tuple[T, ...]:
 __all__ = [
     "Admonition",
     "CodeBlock",
+    "DefinitionItem",
+    "DefinitionList",
     "Element",
     "Heading",
     "Image",
@@ -409,5 +404,11 @@ __all__ = [
     "ListItem",
     "Page",
     "Paragraph",
+    "Strikethrough",
+    "Table",
+    "TableCell",
+    "TableRow",
+    "TaskItem",
+    "TaskList",
     "Text",
 ]
