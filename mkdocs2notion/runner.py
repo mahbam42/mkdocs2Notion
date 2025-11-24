@@ -8,8 +8,28 @@ from typing import TYPE_CHECKING, Optional, Protocol
 
 from .loaders.directory import DirectoryTree, DocumentNode
 from .loaders.id_map import PageIdMap
-from .loaders.mkdocs_nav import NavNode
+from .loaders.mkdocs_nav import NavNode, _page_key
 from .loaders.mkdocs_project import MkdocsProject, load_mkdocs_project
+from .markdown.elements import (
+    Admonition,
+    DefinitionItem,
+    DefinitionList,
+    Element,
+    Heading,
+    InlineContent,
+    Link,
+    List as ListElement,
+    ListItem,
+    Page,
+    Paragraph,
+    Strikethrough,
+    Table,
+    TableCell,
+    TableRow,
+    TaskItem,
+    TaskList,
+    Text,
+)
 from .markdown.parser import MarkdownParseError, parse_markdown
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -39,10 +59,11 @@ class PublishProgress(Protocol):
 
 @dataclass
 class PublishItem:
-    """A single document ready to be published to Notion."""
+    """A single nav entry ready to be published to Notion."""
 
-    document: DocumentNode
-    parent_path: Optional[str]
+    nav_node: NavNode
+    document: DocumentNode | None
+    parent_key: Optional[str]
 
 
 def run_push(
@@ -110,19 +131,23 @@ def run_validate(docs_path: Path, mkdocs_yml: Optional[Path]) -> int:
     print("🔧 Validating docs…")
     project: MkdocsProject = load_mkdocs_project(docs_path, mkdocs_yml)
 
-    errors = project.validate_structure()
+    result = project.validate_structure()
 
     for document in project.directory_tree.documents:
         try:
             parse_markdown(document.content)
         except MarkdownParseError as exc:
-            errors.append(f"{document.relative_path}: {exc}")
+            result.errors.append(f"{document.relative_path}: {exc}")
 
-    if errors:
+    if result.warnings:
+        for warning in result.warnings:
+            print(f"[WARN] {warning}")
+
+    if result.errors:
         print("❌ Validation errors:")
-        for e in errors:
+        for e in result.errors:
             print(f" - {e}")
-        print(f"Found {len(errors)} validation error(s).")
+        print(f"Found {len(result.errors)} validation error(s).")
         return 1
     else:
         print("✅ All checks passed.")
@@ -132,35 +157,34 @@ def run_validate(docs_path: Path, mkdocs_yml: Optional[Path]) -> int:
 def build_publish_plan(
     directory_tree: DirectoryTree, nav_tree: Optional[NavNode]
 ) -> list[PublishItem]:
-    """Create an ordered list of documents to publish.
-
-    Args:
-        directory_tree: Loaded directory tree.
-        nav_tree: Optional mkdocs navigation tree.
-
-    Returns:
-        list[PublishItem]: Ordered publish plan respecting nav ordering when
-            available, otherwise filesystem order.
-    """
+    """Create an ordered list of nav entries to publish."""
 
     if nav_tree is None:
-        return [
-            PublishItem(document=doc, parent_path=None)
-            for doc in directory_tree.documents
-        ]
+        fallback_root = NavNode(title="root", children=[NavNode(title=doc.title, file=doc.relative_path) for doc in directory_tree.documents])
+        fallback_root.assign_paths()
+        nav_tree = fallback_root
 
     plan: list[PublishItem] = []
 
-    def _walk(node: NavNode, parent_path: Optional[str]) -> None:
+    def _walk(node: NavNode, parent_key: Optional[str]) -> None:
         for child in node.children:
-            next_parent = parent_path
+            document = None
             if child.file:
                 document = directory_tree.find_by_path(child.file)
-                if document:
-                    plan.append(PublishItem(document=document, parent_path=parent_path))
-                    next_parent = document.relative_path
-            if child.children:
-                _walk(child, next_parent)
+                if document is None:
+                    document = _stub_document(directory_tree.root, child)
+                    print(
+                        f"[WARN] Nav item '{child.title}' → '{child.file}' not found. Created stub page."
+                    )
+            elif not child.children:
+                document = _stub_document(directory_tree.root, child)
+                print(
+                    f"[WARN] Nav item '{child.title}' is empty; creating stub container."
+                )
+            plan.append(
+                PublishItem(nav_node=child, document=document, parent_key=parent_key)
+            )
+            _walk(child, _page_key(child))
 
     _walk(nav_tree, None)
     return plan
@@ -182,25 +206,44 @@ def _publish_to_notion(
         progress.start(len(publish_plan))
 
     try:
+        # First pass: create empty shells to resolve internal references
+        for item in publish_plan:
+            existing_page_id = id_map.get(_page_key(item.nav_node))
+            resolved_parent_id = (
+                id_map.get(item.parent_key) if item.parent_key else parent_page_id
+            )
+            page_id = adapter.create_or_update_page(
+                title=item.nav_node.title,
+                parent_page_id=resolved_parent_id,
+                page_id=existing_page_id,
+                blocks=[],
+                source_path=item.document.path if item.document else None,
+            )
+            id_map.set(_page_key(item.nav_node), page_id)
+
+        link_targets = {_page_key(item.nav_node): id_map.get(_page_key(item.nav_node)) for item in publish_plan}
+
         for item in publish_plan:
             content = _prepare_document_content(item.document, nav_tree)
             parsed_page = parse_markdown(content)
-            blocks = list(parsed_page.children)
-            existing_page_id = id_map.get(item.document.relative_path)
-
+            rewritten_page, unresolved = _rewrite_internal_links(
+                parsed_page, nav_tree, link_targets
+            )
+            for missing in unresolved:
+                print(f"[WARN] Unresolved link: {missing}")
+            blocks = list(rewritten_page.children)
             resolved_parent_id = (
-                id_map.get(item.parent_path) if item.parent_path else parent_page_id
+                id_map.get(item.parent_key) if item.parent_key else parent_page_id
             )
-            page_id = adapter.create_or_update_page(
-                title=item.document.title,
+            adapter.create_or_update_page(
+                title=item.nav_node.title,
                 parent_page_id=resolved_parent_id,
-                page_id=existing_page_id,
+                page_id=id_map.get(_page_key(item.nav_node)),
                 blocks=blocks,
-                source_path=item.document.path,
+                source_path=item.document.path if item.document else None,
             )
-            id_map.set(item.document.relative_path, page_id)
 
-            if progress:
+            if progress and item.document:
                 progress.advance(item.document)
     finally:
         if progress:
@@ -208,7 +251,7 @@ def _publish_to_notion(
 
 
 def _prepare_document_content(
-    document: DocumentNode, nav_tree: Optional[NavNode]
+    document: DocumentNode | None, nav_tree: Optional[NavNode]
 ) -> str:
     """Return the Markdown content to send to Notion.
 
@@ -223,6 +266,9 @@ def _prepare_document_content(
         str: Markdown content with navigation injected when applicable.
     """
 
+    if document is None:
+        return ""
+
     if not nav_tree or document.relative_path != "index.md":
         return document.content
 
@@ -233,3 +279,129 @@ def _prepare_document_content(
     base_content = document.content.rstrip()
     spacer = "\n\n" if base_content else ""
     return f"{base_content}{spacer}{nav_listing}\n"
+
+
+def _stub_document(root: Path, nav_node: NavNode) -> DocumentNode:
+    relative = nav_node.file or f"nav/{_page_key(nav_node)}.md"
+    return DocumentNode(
+        path=root / relative,
+        relative_path=relative,
+        title=nav_node.title,
+        content="",
+        stub=True,
+    )
+
+def _rewrite_internal_links(
+    page: "Page", nav_tree: Optional[NavNode], link_targets: dict[str, str | None]
+) -> tuple["Page", list[str]]:
+    unresolved: list[str] = []
+
+    def _normalize_target(target: str) -> str:
+        cleaned = target
+        if cleaned.startswith("nav://"):
+            return cleaned.removeprefix("nav://")
+        anchor = ""
+        if "#" in cleaned:
+            cleaned, anchor = cleaned.split("#", 1)
+        if cleaned.endswith(".md"):
+            cleaned = cleaned[:-3]
+        return cleaned or anchor
+
+    def _resolve_link(target: str) -> str | None:
+        normalized = _normalize_target(target)
+        if normalized in link_targets:
+            return link_targets.get(normalized)
+        if f"{normalized}.md" in link_targets:
+            return link_targets.get(f"{normalized}.md")
+        return None
+
+    def _rewrite_inline(inline: InlineContent) -> InlineContent:
+        if isinstance(inline, Link):
+            target_id = _resolve_link(inline.target) if nav_tree else None
+            if target_id:
+                return Link(text=inline.text, target=f"notion://{target_id}")
+            unresolved.append(inline.target)
+            return Text(text=inline.text)
+        if isinstance(inline, Strikethrough) and inline.inlines:
+            return Strikethrough(
+                text=inline.text,
+                inlines=tuple(_rewrite_inline(child) for child in inline.inlines),
+            )
+        return inline
+
+    def _rewrite_element(element: Element) -> Element:
+        if isinstance(element, Heading):
+            return Heading(
+                level=element.level,
+                text=element.text,
+                inlines=tuple(_rewrite_inline(i) for i in element.inlines),
+            )
+        if isinstance(element, Paragraph):
+            return Paragraph(
+                text=element.text,
+                inlines=tuple(_rewrite_inline(i) for i in element.inlines),
+            )
+        if isinstance(element, ListElement):
+            return ListElement(
+                items=tuple(
+                    ListItem(
+                        text=item.text,
+                        inlines=tuple(_rewrite_inline(i) for i in item.inlines),
+                    )
+                    for item in element.items
+                ),
+                ordered=element.ordered,
+            )
+        if isinstance(element, TaskList):
+            return TaskList(
+                items=tuple(
+                    TaskItem(
+                        text=item.text,
+                        checked=item.checked,
+                        inlines=tuple(_rewrite_inline(i) for i in item.inlines),
+                    )
+                    for item in element.items
+                )
+            )
+        if isinstance(element, Admonition):
+            return Admonition(
+                kind=element.kind,
+                title=element.title,
+                content=tuple(_rewrite_element(child) for child in element.content),
+            )
+        if isinstance(element, DefinitionList):
+            return DefinitionList(
+                items=tuple(
+                    DefinitionItem(
+                        term=item.term,
+                        inlines=tuple(_rewrite_inline(i) for i in item.inlines),
+                        descriptions=tuple(
+                            _rewrite_element(desc) for desc in item.descriptions
+                        ),
+                    )
+                    for item in element.items
+                )
+            )
+        if isinstance(element, Table):
+            return Table(
+                rows=tuple(
+                    TableRow(
+                        cells=tuple(
+                            TableCell(
+                                text=cell.text,
+                                inlines=tuple(
+                                    _rewrite_inline(inline) for inline in cell.inlines
+                                ),
+                                is_header=cell.is_header,
+                            )
+                            for cell in row.cells
+                        ),
+                        is_header=row.is_header,
+                    )
+                    for row in element.rows
+                )
+            )
+        return element
+
+    rewritten_children = tuple(_rewrite_element(child) for child in page.children)
+    return Page(title=page.title, children=rewritten_children), unresolved

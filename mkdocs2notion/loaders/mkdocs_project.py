@@ -13,6 +13,12 @@ from .mkdocs_nav import NavNode, load_mkdocs_nav
 
 
 @dataclass
+class ValidationResult:
+    errors: list[str]
+    warnings: list[str]
+
+
+@dataclass
 class MkdocsProject:
     """Container for MkDocs configuration and loaded content."""
 
@@ -45,23 +51,16 @@ class MkdocsProject:
         _walk(self.nav_tree)
         return ordered
 
-    def validate_structure(self) -> list[str]:
-        """Validate that docs align with mkdocs.yml expectations.
-
-        Returns:
-            list[str]: Validation errors covering documents and navigation.
-        """
+    def validate_structure(self) -> "ValidationResult":
+        """Validate that docs align with mkdocs.yml expectations."""
 
         errors = self.directory_tree.validate()
+        warnings: list[str] = []
         if self.nav_tree:
-            errors.extend(self.nav_tree.validate(self.directory_tree))
-            referenced = set(self.nav_tree.referenced_files())
-            for document in self.directory_tree.documents:
-                if document.relative_path not in referenced:
-                    errors.append(
-                        f"Document not listed in mkdocs nav: {document.relative_path}"
-                    )
-        return errors
+            nav_errors, nav_warnings = self.nav_tree.validate(self.directory_tree)
+            errors.extend(nav_errors)
+            warnings.extend(nav_warnings)
+        return ValidationResult(errors=errors, warnings=warnings)
 
     def pretty_nav(self) -> str:
         """Return a human-readable view of the navigation and documents."""

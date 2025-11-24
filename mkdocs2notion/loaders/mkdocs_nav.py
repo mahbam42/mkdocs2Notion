@@ -18,20 +18,41 @@ class NavNode:
     title: str
     file: str | None = None
     children: list["NavNode"] = field(default_factory=list)
+    parent: "NavNode | None" = field(default=None, repr=False)
+    stub: bool = False
+    nav_path: str | None = None
 
-    def validate(self, directory_tree: DirectoryTree) -> list[str]:
+    def assign_paths(self, ancestors: list[str] | None = None) -> None:
+        """Assign hierarchical nav paths used for stable identifiers."""
+
+        ancestors = ancestors or []
+        if self.parent is None:
+            base = ancestors
+        else:
+            base = [*ancestors, _slugify(self.title)]
+        self.nav_path = "/".join(base) if base else None
+        for child in self.children:
+            child.parent = self
+            child.assign_paths(base)
+
+    def iter_nodes(self) -> Iterable["NavNode"]:
+        yield self
+        for child in self.children:
+            yield from child.iter_nodes()
+
+    def validate(self, directory_tree: DirectoryTree) -> tuple[list[str], list[str]]:
         """Validate that nav references align with discovered documents.
 
-        Args:
-            directory_tree: The directory tree produced by ``load_directory``.
-
         Returns:
-            list[str]: Validation error messages.
+            tuple[list[str], list[str]]: (errors, warnings)
         """
 
         errors: list[str] = []
+        warnings: list[str] = []
         known_files = directory_tree.paths()
         seen_files: set[str] = set()
+        seen_titles: dict[str, set[str]] = {}
+        seen_slugs: set[str] = set()
 
         def _walk(node: NavNode, stack: set[int]) -> None:
             if id(node) in stack:
@@ -41,14 +62,34 @@ class NavNode:
             next_stack = set(stack)
             next_stack.add(id(node))
 
-            if not node.file and not node.children:
+            siblings = seen_titles.setdefault(node.parent.nav_path if node.parent else "root", set())
+            if node.title in siblings:
                 errors.append(
-                    f"Nav entry '{node.title}' is missing a file and children"
+                    f"Duplicate page title '{node.title}' under {node.parent.title if node.parent else 'root'}"
+                )
+            siblings.add(node.title)
+
+            if node.nav_path:
+                slug = _slugify(node.nav_path)
+                if slug in seen_slugs:
+                    warnings.append(f"Duplicate nav slug detected: {node.nav_path}")
+                seen_slugs.add(slug)
+
+            if not node.file and not node.children:
+                warnings.append(
+                    f"Nav item '{node.title}' is missing content; creating empty container"
                 )
 
             if node.file:
+                if not node.file.lower().endswith(".md"):
+                    warnings.append(
+                        f"Nav item '{node.title}' → '{node.file}' is not a Markdown file"
+                    )
                 if node.file not in known_files:
-                    errors.append(f"Nav references missing file: {node.file}")
+                    warnings.append(
+                        f"Nav item '{node.title}' → '{node.file}' not found. Created stub page."
+                    )
+                    node.stub = True
                 if node.file in seen_files:
                     errors.append(f"Duplicate nav entry for file: {node.file}")
                 seen_files.add(node.file)
@@ -57,28 +98,28 @@ class NavNode:
                 _walk(child, next_stack)
 
         _walk(self, set())
-        return errors
+        referenced = set(self.referenced_files())
+        for document in directory_tree.documents:
+            if document.relative_path not in referenced:
+                warnings.append(
+                    f"Document not listed in mkdocs nav: {document.relative_path}"
+                )
+        return errors, warnings
 
     def to_markdown_listing(self) -> str:
-        """Render the navigation tree as a Markdown list.
-
-        Returns:
-            str: Markdown-formatted navigation outline. Returns an empty string
-                when there is no navigation to render.
-        """
+        """Render the navigation tree as a Markdown callout with bullets."""
 
         if not self.children:
             return ""
 
-        lines: list[str] = ["## Navigation", ""]
+        lines: list[str] = ['!!! note "📚 Navigation"']
 
         def _walk(nodes: Iterable[NavNode], depth: int) -> None:
             for node in nodes:
-                prefix = "  " * depth + "- "
-                label = node.title
-                if node.file:
-                    label = f"{label} (`{node.file}`)"
-                lines.append(prefix + label)
+                indent = "    " * (depth + 1)
+                target = _page_key(node)
+                link_target = f"nav://{target}"
+                lines.append(f"{indent}- [{node.title}]({link_target})")
                 if node.children:
                     _walk(node.children, depth + 1)
 
@@ -144,7 +185,9 @@ def load_mkdocs_nav(path: Path, *, config: dict[str, Any] | None = None) -> NavN
         raise ValueError("mkdocs nav must be a list")
 
     children = _parse_nav_list(nav_config)
-    return NavNode(title="root", children=children)
+    root = NavNode(title="root", children=children)
+    root.assign_paths()
+    return root
 
 
 def _parse_nav_list(items: list[Any]) -> list[NavNode]:
@@ -181,3 +224,13 @@ def _normalize_path(path: str) -> str:
 def _title_from_path(path: str) -> str:
     stem = Path(path).stem.replace("_", " ").replace("-", " ")
     return stem[:1].upper() + stem[1:]
+
+
+def _page_key(node: NavNode) -> str:
+    if node.file:
+        return node.file
+    return node.nav_path or node.title
+
+
+def _slugify(text: str) -> str:
+    return PurePosixPath(text.replace(" ", "-").lower()).as_posix()

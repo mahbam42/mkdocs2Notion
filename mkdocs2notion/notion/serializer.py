@@ -437,6 +437,17 @@ def _rich_text_for_inline(
     if isinstance(inline, Text):
         return [text_rich(inline.text)]
     if isinstance(inline, Link):
+        if inline.target.startswith("notion://"):
+            page_id = inline.target.removeprefix("notion://")
+            return [
+                {
+                    "type": "mention",
+                    "mention": {"type": "page", "page": {"id": page_id}},
+                    "plain_text": inline.text,
+                    "annotations": _default_annotations(),
+                    "href": None,
+                }
+            ]
         url = inline.target if _is_valid_url(inline.target) else None
         return [text_rich(inline.text, url)]
     if isinstance(inline, Image):

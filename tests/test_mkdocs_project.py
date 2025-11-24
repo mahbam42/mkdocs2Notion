@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from pathlib import Path
+
 import pytest
 
 from mkdocs2notion.loaders.mkdocs_project import load_mkdocs_project
@@ -38,7 +40,7 @@ def test_accepts_direct_mkdocs_file(mkdocs_project_path: Path) -> None:
 def test_validate_structure_surfaces_missing_and_unlisted(mkdocs_project_unlisted_path: Path) -> None:
     project = load_mkdocs_project(mkdocs_project_unlisted_path)
 
-    errors = project.validate_structure()
+    result = project.validate_structure()
 
-    assert any("missing file" in error.lower() for error in errors)
-    assert any("not listed" in error for error in errors)
+    assert any("missing" in warning.lower() for warning in result.warnings)
+    assert any("not listed" in warning for warning in result.warnings)
