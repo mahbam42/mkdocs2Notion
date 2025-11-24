@@ -1,8 +1,5 @@
 from pathlib import Path
 
-from mkdocs2notion.loaders.directory import load_directory
-from pathlib import Path
-
 from mkdocs2notion.loaders.directory import DirectoryTree, load_directory
 from mkdocs2notion.loaders.mkdocs_nav import NavNode, load_mkdocs_nav
 
