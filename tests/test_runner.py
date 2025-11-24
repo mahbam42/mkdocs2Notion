@@ -3,9 +3,8 @@ from typing import Any, List, Optional
 
 from mkdocs2notion.loaders.directory import DocumentNode, load_directory
 from mkdocs2notion.loaders.id_map import PageIdMap
-from mkdocs2notion.loaders.mkdocs_nav import load_mkdocs_nav
-from mkdocs2notion.markdown.elements import Heading
-from mkdocs2notion.markdown.elements import List as ListElement
+from mkdocs2notion.loaders.mkdocs_nav import _page_key, load_mkdocs_nav
+from mkdocs2notion.markdown.elements import Admonition, Heading, Link, List as ListElement
 from mkdocs2notion.notion.api_adapter import NotionAdapter
 from mkdocs2notion.runner import _publish_to_notion, build_publish_plan
 
@@ -55,13 +54,13 @@ def test_build_publish_plan_uses_nav(sample_docs_path: Path) -> None:
 
     plan = build_publish_plan(directory_tree, nav_tree)
 
-    assert [item.document.relative_path for item in plan] == [
-        "index.md",
-        "guide.md",
-        "nested/deep.md",
+    assert [item.nav_node.title for item in plan] == [
+        "Home",
+        "Guide",
+        "Overview",
+        "Deep Dive",
     ]
-    # pages under a nav section without its own file should use the shared parent
-    assert plan[2].parent_path is None
+    assert plan[2].parent_key == _page_key(nav_tree.children[1])
 
 
 def test_publish_to_notion_sets_ids(sample_docs_path: Path, tmp_path: Path) -> None:
@@ -75,8 +74,9 @@ def test_publish_to_notion_sets_ids(sample_docs_path: Path, tmp_path: Path) -> N
     assert id_map.get("index.md") is not None
     assert id_map.get("guide.md") is not None
     assert id_map.get("nested/deep.md") is not None
+    assert id_map.get("guide") is not None
     # parent relationship for nested entry should target provided root when no parent path
-    assert adapter.created[2][1] == "root"
+    assert adapter.created[2][1] == id_map.get("guide")
 
 
 def test_publish_reports_progress(sample_docs_path: Path, tmp_path: Path) -> None:
@@ -95,7 +95,7 @@ def test_publish_reports_progress(sample_docs_path: Path, tmp_path: Path) -> Non
         progress=progress,
     )
 
-    assert progress.started_with == 3
+    assert progress.started_with == 4
     assert progress.advanced == ["index.md", "guide.md", "nested/deep.md"]
     assert progress.finished
 
@@ -116,15 +116,11 @@ def test_nav_structure_injected_into_index(
         parent_page_id=None,
     )
 
-    index_blocks = adapter.created[0][2]
+    index_blocks = adapter.updated[0][1]
 
-    nav_heading = next(
-        block
-        for block in index_blocks
-        if isinstance(block, Heading) and block.text == "Navigation"
-    )
-    assert isinstance(nav_heading, Heading)
+    nav_callout = next(block for block in index_blocks if isinstance(block, Admonition))
+    assert nav_callout.title == "📚 Navigation"
 
-    nav_list = next(block for block in index_blocks if isinstance(block, ListElement))
-    assert any(item.text.startswith("Home") for item in nav_list.items)
-    assert any(item.text.startswith("Guide") for item in nav_list.items)
+    nav_list = next(block for block in nav_callout.content if isinstance(block, ListElement))
+    link_targets = [inline for item in nav_list.items for inline in item.inlines if isinstance(inline, Link)]
+    assert any(link.target.startswith("notion://") for link in link_targets)

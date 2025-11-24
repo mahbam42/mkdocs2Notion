@@ -28,6 +28,7 @@ class DocumentNode:
     content: str
     children: list["DocumentNode"] = field(default_factory=list)
     read_error: bool = False
+    stub: bool = False
 
 
 @dataclass

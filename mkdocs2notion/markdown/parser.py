@@ -190,6 +190,8 @@ def _parse_admonition(lines: Sequence[str], index: int) -> Tuple[Admonition, int
     meta_parts = raw_meta.strip().split(" ", 1)
     kind = meta_parts[0] if meta_parts else "note"
     title = meta_parts[1].strip() if len(meta_parts) > 1 else None
+    if title and title.startswith("\"") and title.endswith("\""):
+        title = title[1:-1]
     index += 1
 
     content_lines: List[str] = []
