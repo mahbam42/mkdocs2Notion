@@ -6,20 +6,32 @@ representation that can be serialized for downstream Notion conversion.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Any, ClassVar, Sequence, TypeVar
+
+
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
-class Element:
+class Element(ABC):
     """Base element with serialization support."""
 
-    type: str
+    type: ClassVar[str]
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the element into a dictionary."""
 
-        return {"type": self.type}
+        payload = {"type": self.type}
+        payload.update(self._serialize())
+        return payload
+
+    @abstractmethod
+    def _serialize(self) -> dict[str, Any]:
+        """Return a dictionary of element-specific fields."""
+
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
@@ -27,10 +39,10 @@ class Text(Element):
     """Inline text span."""
 
     text: str
-    type: str = field(init=False, default="text")
+    type: ClassVar[str] = "text"
 
-    def to_dict(self) -> dict[str, Any]:
-        return {"type": self.type, "text": self.text}
+    def _serialize(self) -> dict[str, Any]:
+        return {"text": self.text}
 
 
 @dataclass(frozen=True)
@@ -39,10 +51,10 @@ class Link(Element):
 
     text: str
     target: str
-    type: str = field(init=False, default="link")
+    type: ClassVar[str] = "link"
 
-    def to_dict(self) -> dict[str, Any]:
-        return {"type": self.type, "text": self.text, "target": self.target}
+    def _serialize(self) -> dict[str, Any]:
+        return {"text": self.text, "target": self.target}
 
 
 @dataclass(frozen=True)
@@ -51,10 +63,10 @@ class Image(Element):
 
     src: str
     alt: str
-    type: str = field(init=False, default="image")
+    type: ClassVar[str] = "image"
 
-    def to_dict(self) -> dict[str, Any]:
-        return {"type": self.type, "src": self.src, "alt": self.alt}
+    def _serialize(self) -> dict[str, Any]:
+        return {"src": self.src, "alt": self.alt}
 
 
 InlineContent = Text | Link | Image
@@ -67,11 +79,13 @@ class Heading(Element):
     level: int
     text: str
     inlines: Sequence[InlineContent] = field(default_factory=tuple)
-    type: str = field(init=False, default="heading")
+    type: ClassVar[str] = "heading"
 
-    def to_dict(self) -> dict[str, Any]:
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "inlines", _normalize_sequence(self.inlines))
+
+    def _serialize(self) -> dict[str, Any]:
         return {
-            "type": self.type,
             "level": self.level,
             "text": self.text,
             "inlines": [_serialize_inline(inline) for inline in self.inlines],
@@ -84,11 +98,13 @@ class Paragraph(Element):
 
     text: str
     inlines: Sequence[InlineContent] = field(default_factory=tuple)
-    type: str = field(init=False, default="paragraph")
+    type: ClassVar[str] = "paragraph"
 
-    def to_dict(self) -> dict[str, Any]:
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "inlines", _normalize_sequence(self.inlines))
+
+    def _serialize(self) -> dict[str, Any]:
         return {
-            "type": self.type,
             "text": self.text,
             "inlines": [_serialize_inline(inline) for inline in self.inlines],
         }
@@ -100,11 +116,13 @@ class ListItem(Element):
 
     text: str
     inlines: Sequence[InlineContent] = field(default_factory=tuple)
-    type: str = field(init=False, default="list_item")
+    type: ClassVar[str] = "list_item"
 
-    def to_dict(self) -> dict[str, Any]:
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "inlines", _normalize_sequence(self.inlines))
+
+    def _serialize(self) -> dict[str, Any]:
         return {
-            "type": self.type,
             "text": self.text,
             "inlines": [_serialize_inline(inline) for inline in self.inlines],
         }
@@ -116,11 +134,13 @@ class List(Element):
 
     items: Sequence[ListItem]
     ordered: bool = False
-    type: str = field(init=False, default="list")
+    type: ClassVar[str] = "list"
 
-    def to_dict(self) -> dict[str, Any]:
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "items", _normalize_sequence(self.items))
+
+    def _serialize(self) -> dict[str, Any]:
         return {
-            "type": self.type,
             "ordered": self.ordered,
             "items": [item.to_dict() for item in self.items],
         }
@@ -132,10 +152,10 @@ class CodeBlock(Element):
 
     language: str | None
     code: str
-    type: str = field(init=False, default="code_block")
+    type: ClassVar[str] = "code_block"
 
-    def to_dict(self) -> dict[str, Any]:
-        return {"type": self.type, "language": self.language, "code": self.code}
+    def _serialize(self) -> dict[str, Any]:
+        return {"language": self.language, "code": self.code}
 
 
 @dataclass(frozen=True)
@@ -145,11 +165,13 @@ class Admonition(Element):
     kind: str
     title: str | None
     content: Sequence[Element]
-    type: str = field(init=False, default="admonition")
+    type: ClassVar[str] = "admonition"
 
-    def to_dict(self) -> dict[str, Any]:
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "content", _normalize_sequence(self.content))
+
+    def _serialize(self) -> dict[str, Any]:
         return {
-            "type": self.type,
             "kind": self.kind,
             "title": self.title,
             "content": [child.to_dict() for child in self.content],
@@ -162,11 +184,13 @@ class Page(Element):
 
     title: str
     children: Sequence[Element] = field(default_factory=tuple)
-    type: str = field(init=False, default="page")
+    type: ClassVar[str] = "page"
 
-    def to_dict(self) -> dict[str, Any]:
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "children", _normalize_sequence(self.children))
+
+    def _serialize(self) -> dict[str, Any]:
         return {
-            "type": self.type,
             "title": self.title,
             "children": [child.to_dict() for child in self.children],
         }
@@ -176,6 +200,14 @@ def _serialize_inline(inline: InlineContent) -> dict[str, Any]:
     """Serialize an inline element consistently."""
 
     return inline.to_dict()
+
+
+def _normalize_sequence(items: Sequence[T] | None) -> tuple[T, ...]:
+    """Normalize potentially mutable sequences into tuples for determinism."""
+
+    if items is None:
+        return tuple()
+    return tuple(items)
 
 
 __all__ = [
