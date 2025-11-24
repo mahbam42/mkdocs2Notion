@@ -56,6 +56,7 @@ dependencies = [
     "mypy",
     "black",
     "notion-client",
+    "mkdocs"
 ]
 
 [tool.hatch.envs.default.env-vars]
@@ -67,3 +68,4 @@ lint = "ruff check"
 lint-fix = "ruff check --fix"
 typecheck = "mypy mkdocs2notion"
 checks = ["lint", "typecheck", "test"]
+serve = "mkdocs serve"
