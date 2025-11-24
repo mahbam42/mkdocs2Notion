@@ -4,6 +4,7 @@ from typing import Any, List, Optional
 from mkdocs2notion.loaders.directory import DocumentNode, load_directory
 from mkdocs2notion.loaders.id_map import PageIdMap
 from mkdocs2notion.loaders.mkdocs_nav import load_mkdocs_nav
+from mkdocs2notion.markdown.elements import Heading, List as ListElement
 from mkdocs2notion.notion.api_adapter import NotionAdapter
 from mkdocs2notion.runner import _publish_to_notion, build_publish_plan
 
@@ -96,3 +97,33 @@ def test_publish_reports_progress(sample_docs_path: Path, tmp_path: Path) -> Non
     assert progress.started_with == 3
     assert progress.advanced == ["index.md", "guide.md", "nested/deep.md"]
     assert progress.finished
+
+
+def test_nav_structure_injected_into_index(
+    sample_docs_path: Path, tmp_path: Path
+) -> None:
+    directory_tree = load_directory(sample_docs_path)
+    nav_tree = load_mkdocs_nav(sample_docs_path / "mkdocs.yml")
+    adapter = RecordingAdapter()
+    id_map = PageIdMap(path=tmp_path / "ids.json")
+
+    _publish_to_notion(
+        directory_tree,
+        nav_tree,
+        adapter,
+        id_map,
+        parent_page_id=None,
+    )
+
+    index_blocks = adapter.created[0][2]
+
+    nav_heading = next(
+        block
+        for block in index_blocks
+        if isinstance(block, Heading) and block.text == "Navigation"
+    )
+    assert isinstance(nav_heading, Heading)
+
+    nav_list = next(block for block in index_blocks if isinstance(block, ListElement))
+    assert any(item.text.startswith("Home") for item in nav_list.items)
+    assert any(item.text.startswith("Guide") for item in nav_list.items)

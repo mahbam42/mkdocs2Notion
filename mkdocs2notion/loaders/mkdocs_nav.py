@@ -41,6 +41,11 @@ class NavNode:
             next_stack = set(stack)
             next_stack.add(id(node))
 
+            if not node.file and not node.children:
+                errors.append(
+                    f"Nav entry '{node.title}' is missing a file and children"
+                )
+
             if node.file:
                 if node.file not in known_files:
                     errors.append(f"Nav references missing file: {node.file}")
@@ -53,6 +58,32 @@ class NavNode:
 
         _walk(self, set())
         return errors
+
+    def to_markdown_listing(self) -> str:
+        """Render the navigation tree as a Markdown list.
+
+        Returns:
+            str: Markdown-formatted navigation outline. Returns an empty string
+                when there is no navigation to render.
+        """
+
+        if not self.children:
+            return ""
+
+        lines: list[str] = ["## Navigation", ""]
+
+        def _walk(nodes: Iterable[NavNode], depth: int) -> None:
+            for node in nodes:
+                prefix = "  " * depth + "- "
+                label = node.title
+                if node.file:
+                    label = f"{label} (`{node.file}`)"
+                lines.append(prefix + label)
+                if node.children:
+                    _walk(node.children, depth + 1)
+
+        _walk(self.children, 0)
+        return "\n".join(lines)
 
     def referenced_files(self) -> list[str]:
         """Return all file paths referenced by this navigation tree.

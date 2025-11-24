@@ -1,6 +1,9 @@
 from pathlib import Path
 
 from mkdocs2notion.loaders.directory import load_directory
+from pathlib import Path
+
+from mkdocs2notion.loaders.directory import DirectoryTree, load_directory
 from mkdocs2notion.loaders.mkdocs_nav import NavNode, load_mkdocs_nav
 
 
@@ -20,6 +23,14 @@ def test_nav_validation_detects_missing_files(sample_docs_path: Path) -> None:
     errors = nav.validate(directory_tree)
 
     assert "missing file" in errors[0]
+
+
+def test_nav_validation_flags_empty_entries() -> None:
+    nav = NavNode(title="root", children=[NavNode(title="Empty Section")])
+
+    errors = nav.validate(DirectoryTree(root=Path("."), documents=[]))
+
+    assert "missing a file and children" in errors[0]
 
 
 def test_nav_pretty(sample_docs_path: Path) -> None:
