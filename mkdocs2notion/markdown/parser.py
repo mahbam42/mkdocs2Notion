@@ -8,6 +8,8 @@ from typing import Iterable, List, Sequence, Tuple
 from mkdocs2notion.markdown.elements import (
     Admonition,
     CodeBlock,
+    DefinitionItem,
+    DefinitionList,
     Element,
     Heading,
     Image,
@@ -16,6 +18,12 @@ from mkdocs2notion.markdown.elements import (
     ListItem,
     Page,
     Paragraph,
+    Strikethrough,
+    Table,
+    TableCell,
+    TableRow,
+    TaskItem,
+    TaskList,
     Text,
 )
 from mkdocs2notion.markdown.elements import (
@@ -82,6 +90,18 @@ def _parse_lines(lines: Sequence[str], start: int) -> Tuple[List[Element], int]:
             heading, index = _parse_heading(lines, index)
             elements.append(heading)
             continue
+        if _is_table_start(lines, index):
+            table, index = _parse_table(lines, index)
+            elements.append(table)
+            continue
+        if _is_definition_start(lines, index):
+            definition_list, index = _parse_definition_list(lines, index)
+            elements.append(definition_list)
+            continue
+        if _is_task_item(line):
+            task_list, index = _parse_task_list(lines, index)
+            elements.append(task_list)
+            continue
         if _is_list_item(line):
             list_block, index = _parse_list(lines, index)
             elements.append(list_block)
@@ -119,6 +139,24 @@ def _parse_list(lines: Sequence[str], index: int) -> Tuple[ListElement, int]:
         items.append(ListItem(text=normalized, inlines=tuple(inline_content)))
         index += 1
     return ListElement(items=tuple(items), ordered=ordered), index
+
+
+def _parse_task_list(lines: Sequence[str], index: int) -> Tuple[TaskList, int]:
+    """Parse consecutive task list items into a TaskList element."""
+
+    items: List[TaskItem] = []
+    while index < len(lines):
+        line = lines[index]
+        if not _is_task_item(line):
+            break
+        checked = _is_checked_task(line)
+        text = _strip_task_marker(line)
+        normalized, inline_content = _parse_inline_formatting(text)
+        items.append(
+            TaskItem(text=normalized, checked=checked, inlines=tuple(inline_content))
+        )
+        index += 1
+    return TaskList(items=tuple(items)), index
 
 
 def _parse_code_block(lines: Sequence[str], index: int) -> Tuple[CodeBlock, int]:
@@ -202,6 +240,32 @@ def _parse_inline_formatting(text: str) -> Tuple[str, List[InlineContent]]:
     index = 0
 
     while index < len(text):
+        if text.startswith("~~", index):
+            closing = text.find("~~", index + 2)
+            if closing == -1:
+                buffer.append(text[index])
+                index += 1
+                continue
+
+            inner_content = text[index + 2 : closing]
+            inner_normalized, inner_inlines = _parse_inline_formatting(inner_content)
+
+            if buffer:
+                literal = "".join(buffer)
+                spans.append(Text(text=literal))
+                normalized_parts.append(literal)
+                buffer = []
+
+            spans.append(
+                Strikethrough(
+                    text=inner_normalized, inlines=tuple(inner_inlines)
+                )
+            )
+            if inner_normalized:
+                normalized_parts.append(inner_normalized)
+            index = closing + 2
+            continue
+
         if text[index] == "[" or (
             text[index] == "!" and index + 1 < len(text) and text[index + 1] == "["
         ):
@@ -240,6 +304,66 @@ def _parse_inline_formatting(text: str) -> Tuple[str, List[InlineContent]]:
 
     normalized_text = "".join(normalized_parts).strip()
     return normalized_text, spans
+
+
+def _parse_definition_list(
+    lines: Sequence[str], index: int
+) -> Tuple[DefinitionList, int]:
+    """Parse definition list blocks consisting of term/definition pairs."""
+
+    items: List[DefinitionItem] = []
+    while index < len(lines) and _is_definition_start(lines, index):
+        term_line = lines[index].strip()
+        term_normalized, term_inlines = _parse_inline_formatting(term_line)
+        index += 1
+
+        descriptions: List[Element] = []
+        while index < len(lines):
+            line = lines[index]
+            if not line.strip():
+                index += 1
+                break
+            if not line.lstrip().startswith(":"):
+                break
+            desc_text = line.lstrip()[1:].strip()
+            normalized, inline_content = _parse_inline_formatting(desc_text)
+            descriptions.append(
+                Paragraph(text=normalized, inlines=tuple(inline_content))
+            )
+            index += 1
+
+        items.append(
+            DefinitionItem(
+                term=term_normalized,
+                descriptions=tuple(descriptions),
+                inlines=tuple(term_inlines),
+            )
+        )
+    return DefinitionList(items=tuple(items)), index
+
+
+def _parse_table(lines: Sequence[str], index: int) -> Tuple[Table, int]:
+    """Parse a GitHub-flavored Markdown table starting at index."""
+
+    header_line = lines[index]
+    header_cells = _split_table_row(header_line)
+    rows: List[TableRow] = [
+        TableRow(
+            cells=tuple(_build_table_cells(header_cells)),
+            is_header=True,
+        )
+    ]
+    index += 2  # Skip header + divider
+
+    while index < len(lines):
+        line = lines[index]
+        if not line.strip().startswith("|"):
+            break
+        row_cells = _split_table_row(line)
+        rows.append(TableRow(cells=tuple(_build_table_cells(row_cells))))
+        index += 1
+
+    return Table(rows=tuple(rows)), index
 
 
 def _parse_inline_span(
@@ -328,6 +452,28 @@ def _split_target_and_title(content: str) -> Tuple[str, str | None]:
     return cleaned, None
 
 
+_TABLE_DIVIDER_RE = re.compile(r"^\s*\|?(?:\s*:?-+:?\s*\|)+\s*$")
+
+
+def _split_table_row(line: str) -> list[str]:
+    """Split a pipe-delimited table row into cell strings."""
+
+    stripped = line.strip().strip("|")
+    return [cell.strip() for cell in stripped.split("|")]
+
+
+def _build_table_cells(cells: list[str]) -> list[TableCell]:
+    """Convert raw cell strings into TableCell elements."""
+
+    table_cells: list[TableCell] = []
+    for cell in cells:
+        normalized, inline_content = _parse_inline_formatting(cell)
+        table_cells.append(
+            TableCell(text=normalized, inlines=tuple(inline_content))
+        )
+    return table_cells
+
+
 def _strip_list_marker(line: str) -> str:
     """Remove list marker from a line."""
 
@@ -345,6 +491,50 @@ def _is_list_item(line: str) -> bool:
 
     stripped = line.lstrip()
     return stripped.startswith("- ") or bool(re.match(r"\d+\. ", stripped))
+
+
+def _is_task_item(line: str) -> bool:
+    """Determine if a line starts a task list item."""
+
+    return bool(re.match(r"\s*-\s\[[ xX]\]\s", line))
+
+
+def _is_checked_task(line: str) -> bool:
+    """Return True if the task line is marked as completed."""
+
+    return "[x]" in line.lower()
+
+
+def _strip_task_marker(line: str) -> str:
+    """Remove task marker from a line."""
+
+    stripped = line.lstrip()
+    after_marker = stripped.split("]", 1)
+    if len(after_marker) == 2:
+        return after_marker[1].strip()
+    return stripped
+
+
+def _is_definition_start(lines: Sequence[str], index: int) -> bool:
+    """Detect the start of a definition list term/definition pair."""
+
+    if index + 1 >= len(lines):
+        return False
+    if not lines[index].strip():
+        return False
+    return lines[index + 1].lstrip().startswith(":")
+
+
+def _is_table_start(lines: Sequence[str], index: int) -> bool:
+    """Detect whether the current line begins a table block."""
+
+    if index + 1 >= len(lines):
+        return False
+    header = lines[index]
+    divider = lines[index + 1]
+    if "|" not in header or "|" not in divider:
+        return False
+    return bool(_TABLE_DIVIDER_RE.match(divider))
 
 
 def _is_ordered_list_item(line: str) -> bool:

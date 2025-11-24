@@ -39,6 +39,14 @@ def test_inline_elements_to_dict() -> None:
         "src": "img.png",
         "alt": "diagram",
     }
+<<<<<<< HEAD
+=======
+    assert Strikethrough(text="crossed", inlines=[Text(text="crossed")]).to_dict() == {
+        "type": "strikethrough",
+        "text": "crossed",
+        "inlines": [{"type": "text", "text": "crossed"}],
+    }
+>>>>>>> cf611b4 (strikethrough, tables, todo list, and dictionary lists now supported)
 
 
 def test_heading_and_paragraph_serialize_inlines() -> None:
@@ -159,6 +167,71 @@ def test_page_to_dict_includes_children() -> None:
     assert isinstance(page.children, tuple)
 
 
+<<<<<<< HEAD
+=======
+def test_table_to_dict_with_caption_and_header() -> None:
+    table = Table(
+        caption="Example",
+        rows=[
+            TableRow(
+                cells=[
+                    TableCell(text="H1", inlines=[Text(text="H1")]),
+                    TableCell(text="H2", inlines=[Text(text="H2")]),
+                ],
+                is_header=True,
+            ),
+            TableRow(
+                cells=[
+                    TableCell(text="R1C1", inlines=[Text(text="R1C1")]),
+                    TableCell(text="R1C2", inlines=[Text(text="R1C2")]),
+                ]
+            ),
+        ],
+    )
+
+    assert table.to_dict() == {
+        "type": "table",
+        "caption": "Example",
+        "rows": [
+            {
+                "type": "table_row",
+                "is_header": True,
+                "cells": [
+                    {
+                        "type": "table_cell",
+                        "text": "H1",
+                        "inlines": [{"type": "text", "text": "H1"}],
+                    },
+                    {
+                        "type": "table_cell",
+                        "text": "H2",
+                        "inlines": [{"type": "text", "text": "H2"}],
+                    },
+                ],
+            },
+            {
+                "type": "table_row",
+                "is_header": False,
+                "cells": [
+                    {
+                        "type": "table_cell",
+                        "text": "R1C1",
+                        "inlines": [{"type": "text", "text": "R1C1"}],
+                    },
+                    {
+                        "type": "table_cell",
+                        "text": "R1C2",
+                        "inlines": [{"type": "text", "text": "R1C2"}],
+                    },
+                ],
+            },
+        ],
+    }
+    assert isinstance(table.rows, tuple)
+    assert isinstance(table.rows[0].cells, tuple)
+
+
+>>>>>>> cf611b4 (strikethrough, tables, todo list, and dictionary lists now supported)
 def test_sequences_are_normalized_to_tuples() -> None:
     list_element = List(items=[ListItem(text="alpha"), ListItem(text="beta")])
     admonition = Admonition(kind="note", title="Title", content=[Paragraph(text="p")])

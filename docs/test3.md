@@ -1,12 +1,13 @@
 # Some Custom Test Blocks 
 
-## Definition List	[^1]
+## Definition List
 term
 : definition
 Foo
 : bar 
 Lorem
 : Ipsum
+: other meaning
 
 Strikethrough	~~The world is flat.~~
 
@@ -19,6 +20,3 @@ Task List
 |----|----|----|
 | the | first | row |
 | second | goes | here |
-
-
-[^1]: I might need to build something to make sure orgmode parses dictionary lists correctly... I use them a lot. 

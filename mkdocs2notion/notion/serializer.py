@@ -14,15 +14,21 @@ from typing import Any, Callable, ClassVar, Sequence
 from mkdocs2notion.markdown.elements import (
     Admonition,
     CodeBlock,
+    DefinitionList,
     Element,
     Heading,
     Image,
     InlineContent,
     Link,
     Paragraph,
+    Strikethrough,
+    Table,
+    TaskList,
     Text,
 )
-from mkdocs2notion.markdown.elements import List as ListElement
+from mkdocs2notion.markdown.elements import (
+    List as ListElement,
+)
 
 
 @dataclass(frozen=True)
@@ -88,6 +94,60 @@ class ListItemBlock(NotionBlock):
 
     def _serialize(self) -> dict[str, Any]:  # pragma: no cover - delegated in to_dict
         return {"rich_text": list(self.rich_text)}
+
+
+@dataclass(frozen=True)
+class ToDoBlock(NotionBlock):
+    """Checkbox (to_do) block."""
+
+    checked: bool
+    rich_text: Sequence[dict[str, Any]]
+    type: ClassVar[str] = "to_do"
+
+    def _serialize(self) -> dict[str, Any]:
+        return {"rich_text": list(self.rich_text), "checked": self.checked}
+
+
+@dataclass(frozen=True)
+class BulletedListItemBlock(NotionBlock):
+    """Bulleted list item with optional children."""
+
+    rich_text: Sequence[dict[str, Any]]
+    children: Sequence[dict[str, Any]]
+    type: ClassVar[str] = "bulleted_list_item"
+
+    def _serialize(self) -> dict[str, Any]:
+        return {"rich_text": list(self.rich_text), "children": list(self.children)}
+
+
+@dataclass(frozen=True)
+class TableRowBlock(NotionBlock):
+    """Table row block."""
+
+    cells: Sequence[Sequence[dict[str, Any]]]
+    type: ClassVar[str] = "table_row"
+
+    def _serialize(self) -> dict[str, Any]:
+        return {"cells": [list(cell) for cell in self.cells]}
+
+
+@dataclass(frozen=True)
+class TableBlock(NotionBlock):
+    """Table container block."""
+
+    table_width: int
+    has_column_header: bool
+    has_row_header: bool
+    children: Sequence[dict[str, Any]]
+    type: ClassVar[str] = "table"
+
+    def _serialize(self) -> dict[str, Any]:
+        return {
+            "table_width": self.table_width,
+            "has_column_header": self.has_column_header,
+            "has_row_header": self.has_row_header,
+            "children": list(self.children),
+        }
 
 
 @dataclass(frozen=True)
@@ -173,11 +233,23 @@ def _serialize_element(
         paragraph_block = ParagraphBlock(rich_text=rich_text)
         return [paragraph_block.to_dict(), *image_blocks]
 
+    if isinstance(element, TaskList):
+        todo_blocks: list[dict[str, Any]] = []
+        for task_item in element.items:
+            rich_text, image_blocks = _render_text_and_images(
+                task_item.inlines, task_item.text, resolve_image
+            )
+            todo_blocks.append(
+                ToDoBlock(checked=task_item.checked, rich_text=rich_text).to_dict()
+            )
+            todo_blocks.extend(image_blocks)
+        return todo_blocks
+
     if isinstance(element, ListElement):
         list_blocks: list[dict[str, Any]] = []
-        for item in element.items:
+        for list_item in element.items:
             rich_text, image_blocks = _render_text_and_images(
-                item.inlines, item.text, resolve_image
+                list_item.inlines, list_item.text, resolve_image
             )
             list_blocks.append(
                 ListItemBlock(ordered=element.ordered, rich_text=rich_text).to_dict()
@@ -190,16 +262,56 @@ def _serialize_element(
         return [CodeBlockPayload(language=language, code=element.code).to_dict()]
 
     if isinstance(element, Admonition):
-        children: list[dict[str, Any]] = []
+        callout_children: list[dict[str, Any]] = []
         for child in element.content:
-            children.extend(_serialize_element(child, resolve_image))
+            callout_children.extend(_serialize_element(child, resolve_image))
         headline = element.title or element.kind.title()
         callout = CalloutBlock(
             icon=_callout_icon(element.kind),
             rich_text=_rich_text_from_inlines([Text(text=headline)], headline),
-            children=children,
+            children=callout_children,
         )
         return [callout.to_dict()]
+
+    if isinstance(element, DefinitionList):
+        definition_blocks: list[dict[str, Any]] = []
+        for definition_item in element.items:
+            rich_text = _bold_rich_text_from_inlines(
+                definition_item.inlines, definition_item.term
+            )
+            description_children: list[dict[str, Any]] = []
+            for description in definition_item.descriptions:
+                description_children.extend(
+                    _serialize_definition_description(description, resolve_image)
+                )
+            definition_blocks.append(
+                BulletedListItemBlock(
+                    rich_text=rich_text,
+                    children=description_children,
+                ).to_dict()
+            )
+        return definition_blocks
+
+    if isinstance(element, Table):
+        row_blocks: list[dict[str, Any]] = []
+        for row in element.rows:
+            row_blocks.append(
+                TableRowBlock(
+                    cells=[
+                        _rich_text_from_inlines(cell.inlines, cell.text)
+                        for cell in row.cells
+                    ]
+                ).to_dict()
+            )
+        table_width = max((len(row.cells) for row in element.rows), default=0)
+        has_header = any(row.is_header for row in element.rows)
+        table_block = TableBlock(
+            table_width=table_width,
+            has_column_header=has_header,
+            has_row_header=False,
+            children=row_blocks,
+        )
+        return [table_block.to_dict()]
 
     if isinstance(element, Image):
         return [ImageBlock(resolve_image(element)).to_dict()]
@@ -208,12 +320,19 @@ def _serialize_element(
     return [fallback.to_dict()]
 
 
-def text_rich(content: str, url: str | None = None) -> dict[str, Any]:
+def text_rich(
+    content: str,
+    url: str | None = None,
+    *,
+    strikethrough: bool = False,
+    bold: bool = False,
+) -> dict[str, Any]:
     """Build a Notion rich text payload for plain text or links.
 
     Args:
         content: Raw textual content to render.
         url: Optional hyperlink target to attach to the text span.
+        strikethrough: Whether to apply strikethrough annotation.
 
     Returns:
         dict[str, Any]: Notion rich text dictionary that can be embedded inside
@@ -223,7 +342,27 @@ def text_rich(content: str, url: str | None = None) -> dict[str, Any]:
     text: dict[str, Any] = {"content": content}
     if url:
         text["link"] = {"url": url}
-    return {"type": "text", "text": text}
+
+    return {
+        "type": "text",
+        "text": text,
+        "annotations": _default_annotations(
+            strikethrough=strikethrough, bold=bold
+        ),
+    }
+
+
+def _default_annotations(
+    *, strikethrough: bool = False, bold: bool = False
+) -> dict[str, Any]:
+    return {
+        "bold": bold,
+        "italic": False,
+        "strikethrough": strikethrough,
+        "underline": False,
+        "code": False,
+        "color": "default",
+    }
 
 
 def _rich_text_from_inlines(
@@ -234,16 +373,21 @@ def _rich_text_from_inlines(
 
     parts: list[dict[str, Any]] = []
     for inline in inlines:
-        if isinstance(inline, Text):
-            parts.append(text_rich(inline.text))
-        elif isinstance(inline, Link):
-            url = inline.target if _is_valid_url(inline.target) else None
-            parts.append(text_rich(inline.text, url))
-        elif isinstance(inline, Image):
-            alt = inline.alt or inline.src
-            url = inline.src if _is_valid_url(inline.src) else None
-            parts.append(text_rich(alt, url))
+        parts.extend(_rich_text_for_inline(inline, fallback_text))
     return parts or [text_rich(fallback_text)]
+
+
+def _bold_rich_text_from_inlines(
+    inlines: Sequence[InlineContent], fallback_text: str
+) -> list[dict[str, Any]]:
+    rich_text = _rich_text_from_inlines(inlines, fallback_text)
+    if not rich_text:
+        return rich_text
+    bolded: list[dict[str, Any]] = []
+    for segment in rich_text:
+        annotations = segment.get("annotations") or _default_annotations()
+        bolded.append({**segment, "annotations": {**annotations, "bold": True}})
+    return bolded
 
 
 def _render_text_and_images(
@@ -263,18 +407,57 @@ def _render_text_and_images(
         if isinstance(inline, Image):
             image_blocks.append(resolve_image(inline))
             continue
-        if isinstance(inline, Text):
-            rich_text.append(text_rich(inline.text))
-        elif isinstance(inline, Link):
-            url = inline.target if _is_valid_url(inline.target) else None
-            rich_text.append(text_rich(inline.text, url))
-        else:
-            rich_text.append(text_rich(fallback_text))
+        rich_text.extend(_rich_text_for_inline(inline, fallback_text))
 
     if not rich_text:
         rich_text = [text_rich(fallback_text)]
 
     return rich_text, image_blocks
+
+
+def _serialize_definition_description(
+    description: Element, resolve_image: Callable[[Image], dict[str, Any]]
+) -> list[dict[str, Any]]:
+    blocks = _serialize_element(description, resolve_image)
+    if (
+        isinstance(description, Paragraph)
+        and blocks
+        and blocks[0].get("type") == "paragraph"
+    ):
+        paragraph_payload = blocks[0]["paragraph"]
+        paragraph_payload["rich_text"] = [text_rich(": ")] + paragraph_payload[
+            "rich_text"
+        ]
+    return blocks
+
+
+def _rich_text_for_inline(
+    inline: InlineContent, fallback_text: str
+) -> list[dict[str, Any]]:
+    if isinstance(inline, Text):
+        return [text_rich(inline.text)]
+    if isinstance(inline, Link):
+        url = inline.target if _is_valid_url(inline.target) else None
+        return [text_rich(inline.text, url)]
+    if isinstance(inline, Image):
+        alt = inline.alt or inline.src
+        url = inline.src if _is_valid_url(inline.src) else None
+        return [text_rich(alt, url)]
+    if isinstance(inline, Strikethrough):
+        if inline.inlines:
+            segments: list[dict[str, Any]] = []
+            for child in inline.inlines:
+                for segment in _rich_text_for_inline(child, inline.text):
+                    segments.append(_apply_strikethrough(segment))
+            return segments
+        return [text_rich(inline.text, strikethrough=True)]
+    return [text_rich(fallback_text)]
+
+
+def _apply_strikethrough(segment: dict[str, Any]) -> dict[str, Any]:
+    annotations = segment.get("annotations") or _default_annotations()
+    annotations = {**annotations, "strikethrough": True}
+    return {**segment, "annotations": annotations}
 
 
 def _heading_type(level: int) -> str:
@@ -295,6 +478,7 @@ def _is_valid_url(url: str) -> bool:
 
 
 __all__ = [
+    "BulletedListItemBlock",
     "CalloutBlock",
     "CodeBlockPayload",
     "HeadingBlock",
@@ -302,6 +486,9 @@ __all__ = [
     "ListItemBlock",
     "NotionBlock",
     "ParagraphBlock",
+    "TableBlock",
+    "TableRowBlock",
+    "ToDoBlock",
     "serialize_elements",
     "text_rich",
 ]

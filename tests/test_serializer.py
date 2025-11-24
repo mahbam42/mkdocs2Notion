@@ -3,12 +3,20 @@
 from mkdocs2notion.markdown.elements import (
     Admonition,
     CodeBlock,
+    DefinitionItem,
+    DefinitionList,
     Heading,
     Image,
     Link,
     List,
     ListItem,
     Paragraph,
+    Strikethrough,
+    Table,
+    TableCell,
+    TableRow,
+    TaskItem,
+    TaskList,
     Text,
 )
 from mkdocs2notion.notion.serializer import serialize_elements, text_rich
@@ -95,3 +103,89 @@ def test_admonition_becomes_callout_with_children() -> None:
     assert callout["icon"]["emoji"] == "⚠️"
     assert callout["rich_text"][0]["text"]["content"] == "Heads up"
     assert callout["children"][0]["paragraph"]["rich_text"][0]["text"]["content"] == "Be careful"
+
+
+def test_strikethrough_inlines_set_annotations() -> None:
+    paragraph = Paragraph(
+        text="strike",
+        inlines=(Strikethrough(text="strike"),),
+    )
+
+    blocks = serialize_elements([paragraph], _stub_resolve_image)
+
+    rich_text = blocks[0]["paragraph"]["rich_text"][0]
+    assert rich_text["annotations"]["strikethrough"] is True
+
+
+def test_task_list_serializes_to_todo_blocks() -> None:
+    task_list = TaskList(
+        items=(
+            TaskItem(text="done", checked=True, inlines=(Text(text="done"),)),
+            TaskItem(text="todo", checked=False, inlines=(Text(text="todo"),)),
+        )
+    )
+
+    blocks = serialize_elements([task_list], _stub_resolve_image)
+
+    assert [block["type"] for block in blocks][:2] == ["to_do", "to_do"]
+    assert blocks[0]["to_do"]["checked"] is True
+    assert blocks[0]["to_do"]["rich_text"][0]["text"]["content"] == "done"
+    assert blocks[1]["to_do"]["checked"] is False
+
+
+def test_definition_list_becomes_bulleted_items_with_children() -> None:
+    definition_list = DefinitionList(
+        items=(
+            DefinitionItem(
+                term="Term",
+                inlines=(Text(text="Term"),),
+                descriptions=(Paragraph(text="Definition", inlines=(Text(text="Definition"),)),),
+            ),
+        )
+    )
+
+    blocks = serialize_elements([definition_list], _stub_resolve_image)
+
+    assert blocks[0]["type"] == "bulleted_list_item"
+    bullet = blocks[0]["bulleted_list_item"]
+    assert bullet["rich_text"][0]["text"]["content"] == "Term"
+    assert bullet["rich_text"][0]["annotations"]["bold"] is True
+    assert (
+        bullet["children"][0]["paragraph"]["rich_text"][0]["text"]["content"]
+        == ": "
+    )
+    assert (
+        bullet["children"][0]["paragraph"]["rich_text"][1]["text"]["content"]
+        == "Definition"
+    )
+
+
+def test_table_serializes_to_table_block_with_rows() -> None:
+    table = Table(
+        rows=(
+            TableRow(
+                cells=(
+                    TableCell(text="H1", inlines=(Text(text="H1"),)),
+                    TableCell(text="H2", inlines=(Text(text="H2"),)),
+                ),
+                is_header=True,
+            ),
+            TableRow(
+                cells=(
+                    TableCell(text="R1C1", inlines=(Text(text="R1C1"),)),
+                    TableCell(text="R1C2", inlines=(Text(text="R1C2"),)),
+                )
+            ),
+        )
+    )
+
+    blocks = serialize_elements([table], _stub_resolve_image)
+
+    assert blocks[0]["type"] == "table"
+    table_payload = blocks[0]["table"]
+    assert table_payload["table_width"] == 2
+    assert table_payload["has_column_header"] is True
+    assert len(table_payload["children"]) == 2
+    header_row = table_payload["children"][0]
+    assert header_row["type"] == "table_row"
+    assert header_row["table_row"]["cells"][0][0]["text"]["content"] == "H1"

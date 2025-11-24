@@ -68,7 +68,34 @@ class Image(Element):
         return {"src": self.src, "alt": self.alt}
 
 
+<<<<<<< HEAD
 InlineContent = Text | Link | Image
+=======
+@dataclass(frozen=True)
+class Strikethrough(Element):
+    """Inline strikethrough span.
+
+    Args:
+        text: Raw text content for the span.
+        inlines: Rich inline content reflecting the strikethrough range.
+    """
+
+    text: str
+    inlines: Sequence["InlineContent"] = field(default_factory=tuple)
+    type: ClassVar[str] = "strikethrough"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "inlines", _normalize_sequence(self.inlines))
+
+    def _serialize(self) -> dict[str, Any]:
+        return {
+            "text": self.text,
+            "inlines": [_serialize_inline(inline) for inline in self.inlines],
+        }
+
+
+InlineContent = Text | Link | Image | Strikethrough
+>>>>>>> cf611b4 (strikethrough, tables, todo list, and dictionary lists now supported)
 
 
 @dataclass(frozen=True)
@@ -195,6 +222,167 @@ class Page(Element):
         }
 
 
+<<<<<<< HEAD
+=======
+@dataclass(frozen=True)
+class TaskItem(Element):
+    """Task list item with completion state.
+
+    Args:
+        text: Visible task text.
+        checked: Whether the task is completed.
+        inlines: Inline content matching the task text.
+    """
+
+    text: str
+    checked: bool
+    inlines: Sequence[InlineContent] = field(default_factory=tuple)
+    type: ClassVar[str] = "task_item"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "inlines", _normalize_sequence(self.inlines))
+
+    def _serialize(self) -> dict[str, Any]:
+        return {
+            "text": self.text,
+            "checked": self.checked,
+            "inlines": [_serialize_inline(inline) for inline in self.inlines],
+        }
+
+
+@dataclass(frozen=True)
+class TaskList(Element):
+    """Checklist container.
+
+    Args:
+        items: Task items preserving order.
+    """
+
+    items: Sequence[TaskItem]
+    type: ClassVar[str] = "task_list"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "items", _normalize_sequence(self.items))
+
+    def _serialize(self) -> dict[str, Any]:
+        return {"items": [item.to_dict() for item in self.items]}
+
+
+@dataclass(frozen=True)
+class DefinitionItem(Element):
+    """Definition list entry mapping a term to definitions.
+
+    Args:
+        term: Defined term.
+        descriptions: Element blocks describing the term.
+        inlines: Inline rendering of the term text.
+    """
+
+    term: str
+    descriptions: Sequence[Element]
+    inlines: Sequence[InlineContent] = field(default_factory=tuple)
+    type: ClassVar[str] = "definition_item"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "descriptions", _normalize_sequence(self.descriptions))
+        object.__setattr__(self, "inlines", _normalize_sequence(self.inlines))
+
+    def _serialize(self) -> dict[str, Any]:
+        return {
+            "term": self.term,
+            "inlines": [_serialize_inline(inline) for inline in self.inlines],
+            "descriptions": [item.to_dict() for item in self.descriptions],
+        }
+
+
+@dataclass(frozen=True)
+class DefinitionList(Element):
+    """Container for a set of term definitions.
+
+    Args:
+        items: Ordered collection of definition entries.
+    """
+
+    items: Sequence[DefinitionItem]
+    type: ClassVar[str] = "definition_list"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "items", _normalize_sequence(self.items))
+
+    def _serialize(self) -> dict[str, Any]:
+        return {"items": [item.to_dict() for item in self.items]}
+
+
+@dataclass(frozen=True)
+class TableCell(Element):
+    """Single table cell with inline content.
+
+    Args:
+        text: Plain text content of the cell.
+        inlines: Inline elements matching the raw text.
+    """
+
+    text: str
+    inlines: Sequence[InlineContent] = field(default_factory=tuple)
+    type: ClassVar[str] = "table_cell"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "inlines", _normalize_sequence(self.inlines))
+
+    def _serialize(self) -> dict[str, Any]:
+        return {
+            "text": self.text,
+            "inlines": [_serialize_inline(inline) for inline in self.inlines],
+        }
+
+
+@dataclass(frozen=True)
+class TableRow(Element):
+    """Row inside a table.
+
+    Args:
+        cells: Cells contained in the row.
+        is_header: Flag indicating the row should be treated as a header.
+    """
+
+    cells: Sequence[TableCell]
+    is_header: bool = False
+    type: ClassVar[str] = "table_row"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "cells", _normalize_sequence(self.cells))
+
+    def _serialize(self) -> dict[str, Any]:
+        return {
+            "is_header": self.is_header,
+            "cells": [cell.to_dict() for cell in self.cells],
+        }
+
+
+@dataclass(frozen=True)
+class Table(Element):
+    """Markdown table block.
+
+    Args:
+        rows: Rows included in the table, header first if present.
+        caption: Optional caption text for the table.
+    """
+
+    rows: Sequence[TableRow]
+    caption: str | None = None
+    type: ClassVar[str] = "table"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "rows", _normalize_sequence(self.rows))
+
+    def _serialize(self) -> dict[str, Any]:
+        return {
+            "caption": self.caption,
+            "rows": [row.to_dict() for row in self.rows],
+        }
+
+
+>>>>>>> cf611b4 (strikethrough, tables, todo list, and dictionary lists now supported)
 def _serialize_inline(inline: InlineContent) -> dict[str, Any]:
     """Serialize an inline element consistently."""
 

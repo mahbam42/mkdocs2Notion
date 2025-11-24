@@ -9,8 +9,16 @@ Elements are immutable dataclasses defined in `mkdocs2notion/markdown/elements.p
 Key blocks:
 - `Page` holds an ordered list of child elements and the derived title.
 - `Heading`, `Paragraph`, `List`, `ListItem`, `CodeBlock`, and `Admonition` represent structural blocks.
+<<<<<<< HEAD
 - `List.to_dict()` normalizes the shape by keeping `type: "list"` and an `ordered` flag rather than varying the type value.
 - Inline elements include `Text`, `Link`, and `Image`, which appear inside headings, paragraphs, and list items. Images currently support external URLs; relative/inline file paths are parsed but not resolved or uploaded.
+=======
+- `TaskList` / `TaskItem` preserve checkbox state for task blocks.
+- `DefinitionList` / `DefinitionItem` map terms to ordered description content.
+- `Table` groups `TableRow` and `TableCell` elements, optionally tracking a caption.
+- `List.to_dict()` normalizes the shape by keeping `type: "list"` and an `ordered` flag rather than varying the type value.
+- Inline elements include `Text`, `Link`, `Image`, and `Strikethrough`, which appear inside headings, paragraphs, and list items. Images currently support external URLs; relative/inline file paths are parsed but not resolved or uploaded.
+>>>>>>> cf611b4 (strikethrough, tables, todo list, and dictionary lists now supported)
 
 ## Parsing Pipeline
 
@@ -31,10 +39,11 @@ Inline tokens follow `[text](target)` for links and `![alt](src)` for images. Th
 
 ## Known Limitations
 
-- Inline formatting is limited to links and images; emphasis or code spans are treated as plain text.
+- Inline formatting is limited to links, images, and strikethrough; emphasis or code spans are treated as plain text.
 - Admonition detection relies on four-space indents for content.
 - Lists are flat and do not parse nested list structures.
 - Code blocks require fenced backticks and do not currently support indented code blocks.
+- Footnotes are currently ignored by the parser and serializer.
 
 ## Notion API Integration
 
