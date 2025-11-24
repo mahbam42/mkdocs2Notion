@@ -203,6 +203,8 @@ class NotionClientAdapter(NotionAdapter):
             dict[str, Any], self.client.blocks.children.list(block_id=block_id)
         )
         for child in existing.get("results", []):
+            if child.get("type") in {"child_page", "child_database"}:
+                continue
             self.client.blocks.delete(block_id=child["id"])
         if children:
             self.client.blocks.children.append(block_id=block_id, children=children)
