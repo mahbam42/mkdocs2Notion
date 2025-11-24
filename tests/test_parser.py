@@ -196,3 +196,22 @@ Outside text
         "second paragraph",
     ]
     assert isinstance(trailing_paragraph, Paragraph)
+
+
+def test_parse_markdown_is_deterministic_for_identical_input() -> None:
+    content = """# Title
+
+Intro with [link](https://example.com).
+
+1. first
+2. second
+
+!!! note
+    nested paragraph
+"""
+
+    first_page = parse_markdown(content)
+    second_page = parse_markdown(content)
+
+    assert first_page == second_page
+    assert first_page.to_dict() == second_page.to_dict()
