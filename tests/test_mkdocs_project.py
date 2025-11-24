@@ -1,7 +1,5 @@
 from pathlib import Path
 
-from pathlib import Path
-
 import pytest
 
 from mkdocs2notion.loaders.mkdocs_project import load_mkdocs_project

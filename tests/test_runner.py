@@ -4,7 +4,8 @@ from typing import Any, List, Optional
 from mkdocs2notion.loaders.directory import DocumentNode, load_directory
 from mkdocs2notion.loaders.id_map import PageIdMap
 from mkdocs2notion.loaders.mkdocs_nav import _page_key, load_mkdocs_nav
-from mkdocs2notion.markdown.elements import Admonition, Heading, Link, List as ListElement
+from mkdocs2notion.markdown.elements import Admonition, Link
+from mkdocs2notion.markdown.elements import List as ListElement
 from mkdocs2notion.notion.api_adapter import NotionAdapter
 from mkdocs2notion.runner import _publish_to_notion, build_publish_plan
 

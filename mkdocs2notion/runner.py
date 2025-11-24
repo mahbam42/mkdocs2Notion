@@ -18,7 +18,6 @@ from .markdown.elements import (
     Heading,
     InlineContent,
     Link,
-    List as ListElement,
     ListItem,
     Page,
     Paragraph,
@@ -29,6 +28,9 @@ from .markdown.elements import (
     TaskItem,
     TaskList,
     Text,
+)
+from .markdown.elements import (
+    List as ListElement,
 )
 from .markdown.parser import MarkdownParseError, parse_markdown
 

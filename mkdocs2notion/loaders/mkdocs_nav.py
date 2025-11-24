@@ -62,7 +62,9 @@ class NavNode:
             next_stack = set(stack)
             next_stack.add(id(node))
 
-            siblings = seen_titles.setdefault(node.parent.nav_path if node.parent else "root", set())
+            parent_nav = node.parent.nav_path if node.parent else None
+            nav_key = parent_nav or "root"
+            siblings = seen_titles.setdefault(nav_key, set())
             if node.title in siblings:
                 errors.append(
                     f"Duplicate page title '{node.title}' under {node.parent.title if node.parent else 'root'}"
@@ -77,7 +79,7 @@ class NavNode:
 
             if not node.file and not node.children:
                 warnings.append(
-                    f"Nav item '{node.title}' is missing content; creating empty container"
+                    f"Nav item '{node.title}' is missing a file and children; creating empty container"
                 )
 
             if node.file:
@@ -87,7 +89,7 @@ class NavNode:
                     )
                 if node.file not in known_files:
                     warnings.append(
-                        f"Nav item '{node.title}' → '{node.file}' not found. Created stub page."
+                        f"Nav item '{node.title}' is missing file '{node.file}'. Created stub page."
                     )
                     node.stub = True
                 if node.file in seen_files:

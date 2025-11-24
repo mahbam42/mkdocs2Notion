@@ -17,17 +17,18 @@ def test_nav_validation_detects_missing_files(sample_docs_path: Path) -> None:
     directory_tree = load_directory(sample_docs_path)
     nav = NavNode(title="root", children=[NavNode(title="Missing", file="absent.md")])
 
-    errors = nav.validate(directory_tree)
+    errors, warnings = nav.validate(directory_tree)
 
-    assert "missing file" in errors[0]
+    assert any("missing file" in warning for warning in warnings)
 
 
 def test_nav_validation_flags_empty_entries() -> None:
     nav = NavNode(title="root", children=[NavNode(title="Empty Section")])
 
-    errors = nav.validate(DirectoryTree(root=Path("."), documents=[]))
+    errors, warnings = nav.validate(DirectoryTree(root=Path("."), documents=[]))
 
-    assert "missing a file and children" in errors[0]
+    assert not errors
+    assert any("missing a file and children" in warning for warning in warnings)
 
 
 def test_nav_pretty(sample_docs_path: Path) -> None:
