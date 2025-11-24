@@ -35,3 +35,30 @@ Inline tokens follow `[text](target)` for links and `![alt](src)` for images. Th
 - Admonition detection relies on four-space indents for content.
 - Lists are flat and do not parse nested list structures.
 - Code blocks require fenced backticks and do not currently support indented code blocks.
+
+## Notion API Integration
+
+This stage owns the communication with Notion after Markdown has been parsed and serialized.
+It should remain idempotent so reruns update existing pages instead of duplicating them, and
+it must be resilient to API limits.
+
+### Core API Operations
+
+- Create new pages within a chosen parent (database, page, or configured default root)
+- Update existing pages when page IDs are known
+- Batch-insert serialized content blocks to honor request size limits
+- Upload images via multipart file uploads or external URLs
+- Link pages together to mirror navigation structure
+
+### Sync Logic
+
+- Maintain a map of MkDocs paths to Notion page IDs to keep updates deterministic
+- Optionally detect changed files for incremental syncs
+- Reconcile deleted pages when entries disappear from the source tree
+- Support both incremental runs and full re-imports
+
+### Error Handling
+
+- Respect Notion API rate limits (3 requests per second) with retries and backoff
+- Handle pagination for large block trees
+- Surface actionable errors when uploads fail or parents are misconfigured
