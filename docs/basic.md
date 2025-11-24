@@ -11,7 +11,7 @@ Paragraph text with an [inline link](https://example.com) and an embedded image:
 Links and images can include parentheses or titles without breaking parsing. For example:
 
 - See the [API reference](https://example.com/path(with-details) "API Reference") for nested parentheses.
-- Embedded image with spaces and a title: ![Flow chart](images/diagram (1).png "System Flow").
+
 
 ### Lists
 
