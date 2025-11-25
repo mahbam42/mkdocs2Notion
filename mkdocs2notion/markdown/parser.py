@@ -1,4 +1,4 @@
-"""Deterministic Markdown parser for Notion-oriented structures."""
+"""Deterministic Markdown parser tuned for Notion-aligned blocks."""
 
 from __future__ import annotations
 
@@ -6,270 +6,397 @@ import re
 from typing import Iterable, List, Sequence, Tuple
 
 from mkdocs2notion.markdown.elements import (
-    Admonition,
+    Block,
+    BulletedListItem,
+    Callout,
     CodeBlock,
-    DefinitionItem,
-    DefinitionList,
-    Element,
+    Divider,
     Heading,
     Image,
-    InlineContent,
-    Link,
-    ListItem,
+    ImageSpan,
+    InlineSpan,
+    LinkSpan,
+    NumberedListItem,
     Page,
     Paragraph,
-    Strikethrough,
+    Quote,
+    RawMarkdown,
+    StrikethroughSpan,
     Table,
     TableCell,
-    TableRow,
-    TaskItem,
-    TaskList,
-    Text,
+    TextSpan,
+    Toggle,
 )
-from mkdocs2notion.markdown.elements import (
-    List as ListElement,
-)
+from mkdocs2notion.utils.logging import NullLogger, WarningLogger
 
 
 class MarkdownParseError(ValueError):
     """Raised when Markdown input cannot be parsed deterministically."""
 
 
-def parse_markdown(text: str) -> Page:
-    """Parse Markdown content into a Page element tree.
-
-    The parser performs a line-oriented scan to deterministically identify block
-    types and attaches inline structures such as links and images. The goal is
-    to produce a stable intermediate representation suitable for later Notion
-    serialization.
-
-    Args:
-        text: Raw Markdown source.
-
-    Returns:
-        Page: Root page containing all parsed child elements.
-
-    Raises:
-        MarkdownParseError: If malformed Markdown prevents deterministic parsing
-            (for example, an unterminated code fence).
-    """
+def parse_markdown(
+    text: str, *, source_file: str = "", logger: WarningLogger | None = None
+) -> Page:
+    """Parse Markdown content into a Page block tree."""
 
     lines = text.splitlines()
-    children, _ = _parse_lines(lines, 0)
+    active_logger = logger or NullLogger()
+    children, _ = _parse_lines(lines, 0, source_file, active_logger)
     title = _infer_title(children)
     return Page(title=title, children=tuple(children))
 
 
-def _parse_lines(lines: Sequence[str], start: int) -> Tuple[List[Element], int]:
-    """Parse lines into block elements starting from an index.
-
-    Args:
-        lines: Raw Markdown lines.
-        start: Starting index for parsing.
-
-    Returns:
-        Tuple[List[Element], int]: Parsed elements and the next index to read.
-    """
-
-    elements: List[Element] = []
+def _parse_lines(
+    lines: Sequence[str],
+    start: int,
+    source_file: str,
+    logger: WarningLogger,
+) -> Tuple[List[Block], int]:
+    elements: List[Block] = []
     index = start
     while index < len(lines):
         line = lines[index]
         if not line.strip():
             index += 1
             continue
+
         if line.startswith("```"):
-            code_block, index = _parse_code_block(lines, index)
+            code_block, index = _parse_code_block(lines, index, source_file, logger)
             elements.append(code_block)
             continue
-        if line.startswith("!!!"):
-            admonition, index = _parse_admonition(lines, index)
-            elements.append(admonition)
+
+        if _is_tab_header(line):
+            toggles, index = _parse_tabs(lines, index, source_file, logger)
+            elements.extend(toggles)
             continue
-        if line.startswith("#"):
-            heading, index = _parse_heading(lines, index)
-            elements.append(heading)
+
+        if _is_callout_line(line):
+            callout, index = _parse_callout(lines, index, source_file, logger)
+            elements.append(callout)
             continue
+
+        if line.startswith(">"):
+            quote, index = _parse_quote(lines, index, source_file, logger)
+            elements.append(quote)
+            continue
+
         if _is_table_start(lines, index):
-            table, index = _parse_table(lines, index)
+            table, index = _parse_table(lines, index, source_file, logger)
             elements.append(table)
             continue
-        if _is_definition_start(lines, index):
-            definition_list, index = _parse_definition_list(lines, index)
-            elements.append(definition_list)
+
+        if _is_divider(line):
+            elements.append(Divider(source_line=index + 1, source_file=source_file))
+            index += 1
             continue
-        if _is_task_item(line):
-            task_list, index = _parse_task_list(lines, index)
-            elements.append(task_list)
+
+        if _is_numbered_list(line):
+            block, index = _parse_list(lines, index, source_file, ordered=True, logger=logger)
+            elements.extend(block)
             continue
-        if _is_list_item(line):
-            list_block, index = _parse_list(lines, index)
-            elements.append(list_block)
+
+        if _is_bullet_list(line):
+            block, index = _parse_list(lines, index, source_file, ordered=False, logger=logger)
+            elements.extend(block)
             continue
-        paragraph, index = _parse_paragraph(lines, index)
-        elements.append(paragraph)
+
+        if line.startswith("#"):
+            heading, index = _parse_heading(lines, index, source_file)
+            elements.append(heading)
+            continue
+
+        paragraph_blocks, index = _parse_paragraph(lines, index, source_file)
+        elements.extend(paragraph_blocks)
     return elements, index
 
 
-def _parse_heading(lines: Sequence[str], index: int) -> Tuple[Heading, int]:
-    """Parse a single heading line."""
-
+def _parse_heading(lines: Sequence[str], index: int, source_file: str) -> Tuple[Heading, int]:
     line = lines[index]
     level = len(line) - len(line.lstrip("#"))
     text = line[level:].strip()
     normalized, inline_content = _parse_inline_formatting(text)
-    heading = Heading(level=level, text=normalized, inlines=tuple(inline_content))
+    heading = Heading(
+        level=level,
+        text=normalized,
+        inlines=tuple(inline_content),
+        source_line=index + 1,
+        source_file=source_file,
+    )
     return heading, index + 1
 
 
-def _parse_list(lines: Sequence[str], index: int) -> Tuple[ListElement, int]:
-    """Parse consecutive list items into a List element.
-
-    The parser respects indentation to build nested list hierarchies.
-    """
-
-    items: List[ListItem] = []
-    base_indent = _indent_level(lines[index])
-    ordered = _is_ordered_list_item(lines[index])
+def _parse_paragraph(
+    lines: Sequence[str], index: int, source_file: str
+) -> Tuple[List[Block], int]:
+    buffer: List[str] = []
+    start = index
     while index < len(lines):
         line = lines[index]
         if not line.strip():
             index += 1
             break
-
-        indent = _indent_level(line)
-        if indent < base_indent or not _is_list_item(line):
+        if line.startswith(("#", "```", ">", "=== ")) or _starts_block(line):
             break
+        buffer.append(line.strip())
+        index += 1
+    text = " ".join(buffer)
+    normalized, inline_content = _parse_inline_formatting(text)
+    image_spans = [span for span in inline_content if isinstance(span, ImageSpan)]
+    non_image_inlines = [span for span in inline_content if not isinstance(span, ImageSpan)]
 
-        if indent > base_indent:
-            if not items:
-                break
-            nested_list, index = _parse_list(lines, index)
-            parent = items[-1]
-            items[-1] = ListItem(
-                text=parent.text,
-                inlines=parent.inlines,
-                children=tuple((*parent.children, nested_list)),
-            )
-            continue
+    blocks: List[Block] = []
+    if normalized or non_image_inlines:
+        paragraph = Paragraph(
+            text=normalized,
+            inlines=tuple(non_image_inlines),
+            source_line=start + 1,
+            source_file=source_file,
+        )
+        blocks.append(paragraph)
 
-        current_ordered = _is_ordered_list_item(line)
-        if current_ordered != ordered:
-            break
-
-        text = _strip_list_marker(line[indent:])
-        normalized, inline_content = _parse_inline_formatting(text)
-        items.append(
-            ListItem(
-                text=normalized,
-                inlines=tuple(inline_content),
-                children=tuple(),
+    for image_span in image_spans:
+        blocks.append(
+            Image(
+                source=image_span.source,
+                alt=image_span.text,
+                source_line=start + 1,
+                source_file=source_file,
             )
         )
-        index += 1
-    return ListElement(items=tuple(items), ordered=ordered), index
+
+    return blocks, index
 
 
-def _parse_task_list(lines: Sequence[str], index: int) -> Tuple[TaskList, int]:
-    """Parse consecutive task list items into a TaskList element."""
-
-    items: List[TaskItem] = []
+def _parse_list(
+    lines: Sequence[str],
+    index: int,
+    source_file: str,
+    *,
+    ordered: bool,
+    logger: WarningLogger,
+) -> Tuple[List[Block], int]:
+    items: List[Block] = []
     while index < len(lines):
         line = lines[index]
-        if not _is_task_item(line):
+        if not _is_bullet_list(line) and not _is_numbered_list(line):
             break
-        checked = _is_checked_task(line)
-        text = _strip_task_marker(line)
-        normalized, inline_content = _parse_inline_formatting(text)
-        items.append(
-            TaskItem(text=normalized, checked=checked, inlines=tuple(inline_content))
+        bullet_text = line.split(" ", 1)[1]
+        normalized, inline_content = _parse_inline_formatting(bullet_text)
+        item_class = NumberedListItem if ordered else BulletedListItem
+        item = item_class(
+            text=normalized,
+            inlines=tuple(inline_content),
+            source_line=index + 1,
+            source_file=source_file,
         )
+        items.append(item)
         index += 1
-    return TaskList(items=tuple(items)), index
+    return items, index
 
 
-def _parse_code_block(lines: Sequence[str], index: int) -> Tuple[CodeBlock, int]:
-    """Parse fenced code block starting at index.
-
-    Raises:
-        MarkdownParseError: If the closing code fence cannot be found.
-    """
-
+def _parse_code_block(
+    lines: Sequence[str], index: int, source_file: str, logger: WarningLogger
+) -> Tuple[CodeBlock, int]:
     opening = lines[index]
     language = opening.strip("`").strip() or None
-    start_line = index + 1
+    start_line = index
     index += 1
     code_lines: List[str] = []
     while index < len(lines) and not lines[index].startswith("```"):
         code_lines.append(lines[index])
         index += 1
     if index >= len(lines):
-        raise MarkdownParseError(
-            f"Unterminated code fence starting at line {start_line}"
+        logger.warn(
+            filename=source_file,
+            line=start_line + 1,
+            element_type="CodeBlock",
+            message="unterminated code fence, treating as raw markdown",
+            code="file-io-warning",
         )
+        raw = RawMarkdown(
+            source_text="\n".join(lines[start_line:]),
+            source_line=start_line + 1,
+            source_file=source_file,
+        )
+        return raw, len(lines)
+    code = "\n".join(code_lines)
+    block = CodeBlock(
+        language=language,
+        code=code,
+        source_line=start_line + 1,
+        source_file=source_file,
+    )
+    return block, index + 1
+
+
+def _parse_callout(
+    lines: Sequence[str], index: int, source_file: str, logger: WarningLogger
+) -> Tuple[Block, int]:
+    start = index
+    header = lines[index]
+    match = _CALLOUT_RE.match(header)
+    if not match:
+        logger.warn(
+            filename=source_file,
+            line=start + 1,
+            element_type="Callout",
+            message="unsupported callout syntax, passing through",
+            code="unsupported-block",
+        )
+        return _raw_block(lines, start, source_file)
+
+    callout_type = match.group("type").upper()
+    icon = _CALL_OUT_ICONS.get(callout_type.lower())
+    body = match.group("body").strip()
+    content_lines = [body] if body else []
     index += 1
-    return CodeBlock(language=language, code="\n".join(code_lines)), index
+    while index < len(lines) and lines[index].startswith(">"):
+        content_lines.append(lines[index][1:].lstrip())
+        index += 1
+
+    children, _ = _parse_lines(content_lines, 0, source_file, logger)
+    callout = Callout(
+        callout_type=callout_type,
+        icon=icon,
+        children=tuple(children),
+        source_line=start + 1,
+        source_file=source_file,
+    )
+    return callout, index
 
 
-def _parse_admonition(lines: Sequence[str], index: int) -> Tuple[Admonition, int]:
-    """Parse admonition blocks introduced by `!!!` markers."""
-
-    header = lines[index].strip()
-    _, _, raw_meta = header.partition("!!!")
-    meta_parts = raw_meta.strip().split(" ", 1)
-    kind = meta_parts[0] if meta_parts else "note"
-    title = meta_parts[1].strip() if len(meta_parts) > 1 else None
-    if title and title.startswith("\"") and title.endswith("\""):
-        title = title[1:-1]
-    index += 1
-
+def _parse_quote(
+    lines: Sequence[str], index: int, source_file: str, logger: WarningLogger
+) -> Tuple[Quote, int]:
+    start = index
     content_lines: List[str] = []
-    while index < len(lines):
-        line = lines[index]
-        if not line.startswith("    ") and line.strip():
-            break
-        if not line.strip():
-            content_lines.append("")
-        else:
-            content_lines.append(line[4:])
+    while index < len(lines) and lines[index].startswith(">"):
+        content_lines.append(lines[index][1:].lstrip())
         index += 1
+    children, _ = _parse_lines(content_lines, 0, source_file, logger)
+    quote = Quote(children=tuple(children), source_line=start + 1, source_file=source_file)
+    return quote, index
 
-    content, _ = _parse_lines(content_lines, 0)
-    return Admonition(kind=kind, title=title, content=tuple(content)), index
 
-
-def _parse_paragraph(lines: Sequence[str], index: int) -> Tuple[Paragraph, int]:
-    """Parse paragraph lines until a blank or new block."""
-
-    buffer: List[str] = []
-    while index < len(lines):
-        line = lines[index]
-        if not line.strip():
+def _parse_tabs(
+    lines: Sequence[str], index: int, source_file: str, logger: WarningLogger
+) -> Tuple[List[Toggle], int]:
+    toggles: List[Toggle] = []
+    start = index
+    while index < len(lines) and _is_tab_header(lines[index]):
+        header = lines[index]
+        title = header.split("\"", 2)[1]
+        index += 1
+        tab_content: List[str] = []
+        while index < len(lines) and not _is_tab_header(lines[index]) and lines[index].strip():
+            tab_content.append(lines[index].lstrip())
             index += 1
-            break
-        if line.startswith(("#", "!!!", "```")) or _is_list_item(line):
-            break
-        buffer.append(line.strip())
+        children, _ = _parse_lines(tab_content, 0, source_file, logger)
+        toggle = Toggle(
+            title=title,
+            inlines=(TextSpan(text=title),),
+            children=tuple(children),
+            source_line=start + 1,
+            source_file=source_file,
+        )
+        toggles.append(toggle)
+        if index < len(lines) and not lines[index].strip():
+            index += 1
+    if not toggles:
+        logger.warn(
+            filename=source_file,
+            line=start + 1,
+            element_type="Tabs",
+            message="malformed tabs, keeping raw markdown",
+            code="unsupported-block",
+        )
+        raw, index = _raw_block(lines, start, source_file)
+        return [raw], index
+    return toggles, index
+
+
+def _parse_table(
+    lines: Sequence[str], index: int, source_file: str, logger: WarningLogger
+) -> Tuple[Block, int]:
+    start = index
+    if index + 1 >= len(lines):
+        return _raw_table(lines, start, source_file, logger)
+    header_line = lines[index]
+    divider_line = lines[index + 1]
+    header_cells = _split_table_row(header_line)
+    divider_cells = _split_table_row(divider_line)
+    if len(header_cells) != len(divider_cells) or not _TABLE_DIVIDER_RE.match(divider_line):
+        return _raw_table(lines, start, source_file, logger)
+
+    row_lines: List[str] = []
+    index += 2
+    while index < len(lines) and lines[index].lstrip().startswith("|"):
+        row_lines.append(lines[index])
         index += 1
-    text = " ".join(buffer)
-    normalized, inline_content = _parse_inline_formatting(text)
-    return Paragraph(text=normalized, inlines=tuple(inline_content)), index
+
+    try:
+        headers = tuple(_build_cells(header_cells))
+        rows = []
+        for row_line in row_lines:
+            row_cells = _split_table_row(row_line)
+            rows.append(tuple(_build_cells(row_cells)))
+        table = Table(
+            headers=headers,
+            rows=tuple(rows),
+            source_line=start + 1,
+            source_file=source_file,
+        )
+        return table, index
+    except Exception:
+        return _raw_table(lines, start, source_file, logger)
 
 
-def _parse_inline_formatting(text: str) -> Tuple[str, List[InlineContent]]:
-    """Parse inline links and images while preserving plain text.
+def _raw_table(
+    lines: Sequence[str], index: int, source_file: str, logger: WarningLogger
+) -> Tuple[RawMarkdown, int]:
+    raw_lines: List[str] = []
+    start = index
+    while index < len(lines) and lines[index].strip():
+        raw_lines.append(lines[index])
+        index += 1
+    logger.warn(
+        filename=source_file,
+        line=start + 1,
+        element_type="Table",
+        message="malformed GFM table, falling back to raw markdown",
+        code="table-parse-warning",
+    )
+    raw = RawMarkdown(
+        source_text="\n".join(raw_lines),
+        source_line=start + 1,
+        source_file=source_file,
+    )
+    return raw, index
 
-    This parser walks the string character by character to support nested
-    parentheses in link targets and optional titles. Image alt text is preserved
-    in the normalized plain-text output to keep heading and paragraph text
-    aligned with rendered content.
-    """
 
-    spans: List[InlineContent] = []
+def _raw_block(
+    lines: Sequence[str], index: int, source_file: str
+) -> Tuple[RawMarkdown, int]:
+    raw_lines: List[str] = []
+    start = index
+    while index < len(lines) and lines[index].strip():
+        raw_lines.append(lines[index])
+        index += 1
+    return (
+        RawMarkdown(
+            source_text="\n".join(raw_lines),
+            source_line=start + 1,
+            source_file=source_file,
+        ),
+        index,
+    )
+
+
+def _parse_inline_formatting(text: str) -> Tuple[str, List[InlineSpan]]:
+    spans: List[InlineSpan] = []
     normalized_parts: List[str] = []
     buffer: List[str] = []
     index = 0
-
     while index < len(text):
         if text.startswith("~~", index):
             closing = text.find("~~", index + 2)
@@ -277,18 +404,15 @@ def _parse_inline_formatting(text: str) -> Tuple[str, List[InlineContent]]:
                 buffer.append(text[index])
                 index += 1
                 continue
-
-            inner_content = text[index + 2 : closing]
-            inner_normalized, inner_inlines = _parse_inline_formatting(inner_content)
-
+            inner = text[index + 2 : closing]
+            inner_normalized, inner_inlines = _parse_inline_formatting(inner)
             if buffer:
                 literal = "".join(buffer)
-                spans.append(Text(text=literal))
+                spans.append(TextSpan(text=literal))
                 normalized_parts.append(literal)
                 buffer = []
-
             spans.append(
-                Strikethrough(
+                StrikethroughSpan(
                     text=inner_normalized, inlines=tuple(inner_inlines)
                 )
             )
@@ -305,20 +429,17 @@ def _parse_inline_formatting(text: str) -> Tuple[str, List[InlineContent]]:
                 buffer.append(text[index])
                 index += 1
                 continue
-
             start, end, span, normalized_fragment = inline
             if buffer:
                 literal = "".join(buffer)
-                spans.append(Text(text=literal))
+                spans.append(TextSpan(text=literal))
                 normalized_parts.append(literal)
                 buffer = []
-
             if start > index:
                 literal_prefix = text[index:start]
                 if literal_prefix:
-                    spans.append(Text(text=literal_prefix))
+                    spans.append(TextSpan(text=literal_prefix))
                     normalized_parts.append(literal_prefix)
-
             spans.append(span)
             if normalized_fragment:
                 normalized_parts.append(normalized_fragment)
@@ -330,103 +451,24 @@ def _parse_inline_formatting(text: str) -> Tuple[str, List[InlineContent]]:
 
     if buffer:
         literal = "".join(buffer)
-        spans.append(Text(text=literal))
+        spans.append(TextSpan(text=literal))
         normalized_parts.append(literal)
-
     normalized_text = "".join(normalized_parts).strip()
     return normalized_text, spans
 
 
-def _parse_definition_list(
-    lines: Sequence[str], index: int
-) -> Tuple[DefinitionList, int]:
-    """Parse definition list blocks consisting of term/definition pairs."""
-
-    items: List[DefinitionItem] = []
-    while index < len(lines) and _is_definition_start(lines, index):
-        term_line = lines[index].strip()
-        term_normalized, term_inlines = _parse_inline_formatting(term_line)
-        index += 1
-
-        descriptions: List[Element] = []
-        while index < len(lines):
-            line = lines[index]
-            if not line.strip():
-                index += 1
-                break
-            if not line.lstrip().startswith(":"):
-                break
-            desc_text = line.lstrip()[1:].strip()
-            normalized, inline_content = _parse_inline_formatting(desc_text)
-            descriptions.append(
-                Paragraph(text=normalized, inlines=tuple(inline_content))
-            )
-            index += 1
-
-        items.append(
-            DefinitionItem(
-                term=term_normalized,
-                descriptions=tuple(descriptions),
-                inlines=tuple(term_inlines),
-            )
-        )
-    return DefinitionList(items=tuple(items)), index
-
-
-def _parse_table(lines: Sequence[str], index: int) -> Tuple[Table, int]:
-    """Parse a GitHub-flavored Markdown table starting at index."""
-
-    header_line = lines[index]
-    header_cells = _split_table_row(header_line)
-    rows: List[TableRow] = [
-        TableRow(
-            cells=tuple(_build_table_cells(header_cells)),
-            is_header=True,
-        )
-    ]
-    index += 2  # Skip header + divider
-
-    while index < len(lines):
-        line = lines[index]
-        if not line.strip().startswith("|"):
-            break
-        row_cells = _split_table_row(line)
-        rows.append(TableRow(cells=tuple(_build_table_cells(row_cells))))
-        index += 1
-
-    return Table(rows=tuple(rows)), index
-
-
-def _parse_inline_span(
-    text: str, start_index: int
-) -> Tuple[int, int, InlineContent, str | None] | None:
-    """Parse a link or image span starting at a given index.
-
-    Args:
-        text: Full text being processed.
-        start_index: Index where the potential inline element begins.
-
-    Returns:
-        Tuple[int, int, InlineContent, str | None] | None: A tuple containing the
-        original start index, the position immediately after the parsed span, the
-        inline element, and the normalized text fragment to include. If parsing
-        fails, returns ``None``.
-    """
-
+def _parse_inline_span(text: str, start_index: int):
     is_image = text[start_index] == "!"
     bracket_index = start_index + 1 if is_image else start_index
     if bracket_index >= len(text) or text[bracket_index] != "[":
         return None
-
     bracket_content = _extract_balanced(text, bracket_index, "[", "]")
     if bracket_content is None:
         return None
     label, closing_bracket_index = bracket_content
-
     paren_index = closing_bracket_index + 1
     if paren_index >= len(text) or text[paren_index] != "(":
         return None
-
     paren_content = _extract_balanced(text, paren_index, "(", ")")
     if paren_content is None:
         return None
@@ -434,25 +476,18 @@ def _parse_inline_span(
     target, _title = _split_target_and_title(link_target)
     if not target:
         return None
-
     if is_image:
-        span: InlineContent = Image(src=target, alt=label)
-        normalized_fragment = label
+        span = ImageSpan(text=label, source=target)
+        normalized_fragment = ""
     else:
-        span = Link(text=label, target=target)
+        span = LinkSpan(text=label, target=target)
         normalized_fragment = label
-
     return start_index, closing_paren_index + 1, span, normalized_fragment
 
 
-def _extract_balanced(
-    text: str, start_index: int, opener: str, closer: str
-) -> Tuple[str, int] | None:
-    """Extract text enclosed by balanced opener/closer characters."""
-
+def _extract_balanced(text: str, start_index: int, opener: str, closer: str):
     if text[start_index] != opener:
         return None
-
     depth = 1
     index = start_index + 1
     while index < len(text):
@@ -470,13 +505,10 @@ def _extract_balanced(
 _TITLE_PATTERN = re.compile(r"^(?P<target>.+?)\s+(?P<title>(\".*\"|'.*'))$")
 
 
-def _split_target_and_title(content: str) -> Tuple[str, str | None]:
-    """Split link target from an optional title fragment."""
-
+def _split_target_and_title(content: str):
     cleaned = content.strip()
     if not cleaned:
         return "", None
-
     match = _TITLE_PATTERN.match(cleaned)
     if match:
         return match.group("target").strip(), match.group("title")
@@ -484,105 +516,58 @@ def _split_target_and_title(content: str) -> Tuple[str, str | None]:
 
 
 _TABLE_DIVIDER_RE = re.compile(r"^\s*\|?(?:\s*:?-+:?\s*\|)+\s*$")
+_CALLOUT_RE = re.compile(r"^>\s*\[!(?P<type>[A-Za-z]+)\]\s*(?P<body>.*)$")
+_CALL_OUT_ICONS = {"note": "💡", "tip": "💡", "warning": "⚠️", "info": "ℹ️"}
 
 
 def _split_table_row(line: str) -> list[str]:
-    """Split a pipe-delimited table row into cell strings."""
-
     stripped = line.strip().strip("|")
     return [cell.strip() for cell in stripped.split("|")]
 
 
-def _build_table_cells(cells: list[str]) -> list[TableCell]:
-    """Convert raw cell strings into TableCell elements."""
-
-    table_cells: list[TableCell] = []
+def _build_cells(cells: list[str]) -> list[TableCell]:
+    result: list[TableCell] = []
     for cell in cells:
-        normalized, inline_content = _parse_inline_formatting(cell)
-        table_cells.append(
-            TableCell(text=normalized, inlines=tuple(inline_content))
-        )
-    return table_cells
-
-
-def _strip_list_marker(line: str) -> str:
-    """Remove list marker from a line."""
-
-    stripped = line.lstrip()
-    if stripped[0] == "-":
-        return stripped[2:].strip()
-    dot_index = stripped.find(". ")
-    if dot_index != -1:
-        return stripped[dot_index + 2 :].strip()
-    return stripped
-
-
-def _is_list_item(line: str) -> bool:
-    """Determine if a line starts a list item."""
-
-    stripped = line.lstrip()
-    return stripped.startswith("- ") or bool(re.match(r"\d+\. ", stripped))
-
-
-def _indent_level(line: str) -> int:
-    """Return the leading space indentation level for a line."""
-
-    return len(line) - len(line.lstrip(" "))
-
-
-def _is_task_item(line: str) -> bool:
-    """Determine if a line starts a task list item."""
-
-    return bool(re.match(r"\s*-\s\[[ xX]\]\s", line))
-
-
-def _is_checked_task(line: str) -> bool:
-    """Return True if the task line is marked as completed."""
-
-    return "[x]" in line.lower()
-
-
-def _strip_task_marker(line: str) -> str:
-    """Remove task marker from a line."""
-
-    stripped = line.lstrip()
-    after_marker = stripped.split("]", 1)
-    if len(after_marker) == 2:
-        return after_marker[1].strip()
-    return stripped
-
-
-def _is_definition_start(lines: Sequence[str], index: int) -> bool:
-    """Detect the start of a definition list term/definition pair."""
-
-    if index + 1 >= len(lines):
-        return False
-    if not lines[index].strip():
-        return False
-    return lines[index + 1].lstrip().startswith(":")
+        normalized, inlines = _parse_inline_formatting(cell)
+        result.append(TableCell(text=normalized, inlines=tuple(inlines)))
+    return result
 
 
 def _is_table_start(lines: Sequence[str], index: int) -> bool:
-    """Detect whether the current line begins a table block."""
-
     if index + 1 >= len(lines):
         return False
     header = lines[index]
     divider = lines[index + 1]
     if "|" not in header or "|" not in divider:
         return False
-    return bool(_TABLE_DIVIDER_RE.match(divider))
+    return True
 
 
-def _is_ordered_list_item(line: str) -> bool:
-    """Check if a line is an ordered list item."""
+def _is_divider(line: str) -> bool:
+    return line.strip() in {"---", "***"}
 
+
+def _is_bullet_list(line: str) -> bool:
+    return line.lstrip().startswith("- ")
+
+
+def _is_numbered_list(line: str) -> bool:
     return bool(re.match(r"\d+\. ", line.lstrip()))
 
 
-def _infer_title(children: Iterable[object]) -> str:
-    """Choose a page title from the first level-one heading or fallback."""
+def _starts_block(line: str) -> bool:
+    return _is_bullet_list(line) or _is_numbered_list(line) or _is_table_start([line, ""], 0)
 
+
+def _is_tab_header(line: str) -> bool:
+    return line.startswith('=== "') and line.endswith('"')
+
+
+def _is_callout_line(line: str) -> bool:
+    return bool(_CALLOUT_RE.match(line))
+
+
+def _infer_title(children: Iterable[object]) -> str:
     for element in children:
         if isinstance(element, Heading) and element.level == 1:
             return element.text

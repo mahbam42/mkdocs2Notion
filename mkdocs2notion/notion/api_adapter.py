@@ -25,8 +25,25 @@ import requests
 from notion_client import Client
 from notion_client.errors import APIResponseError
 
-from mkdocs2notion.markdown.elements import Element, Image, Page
-from mkdocs2notion.notion.serializer import serialize_elements, text_rich
+from mkdocs2notion.markdown.elements import Block, Image, Page
+from mkdocs2notion.notion.serializer import serialize_elements
+
+
+def text_rich(content: str) -> dict[str, Any]:
+    """Return a minimal Notion rich text payload."""
+
+    return {
+        "type": "text",
+        "text": {"content": content},
+        "annotations": {
+            "bold": False,
+            "italic": False,
+            "strikethrough": False,
+            "underline": False,
+            "code": False,
+            "color": "default",
+        },
+    }
 
 
 class NotionAdapter(ABC):
@@ -211,12 +228,12 @@ class NotionClientAdapter(NotionAdapter):
 
     def _normalize_blocks(
         self,
-        blocks: Sequence[Element] | Sequence[Mapping[str, Any]] | Page,
+        blocks: Sequence[Block] | Sequence[Mapping[str, Any]] | Page,
         source_path: Path | None,
         upload_parent: str | None,
         upload_parent_type: str | None,
     ) -> list[dict[str, Any]]:
-        elements: Sequence[Element] | Sequence[Mapping[str, Any]]
+        elements: Sequence[Block] | Sequence[Mapping[str, Any]]
         if isinstance(blocks, Page):
             elements = blocks.children
         else:
@@ -228,10 +245,12 @@ class NotionClientAdapter(NotionAdapter):
                 dict(block) for block in cast(Sequence[Mapping[str, Any]], materialized)
             ]
 
-        resolver = lambda img: self._resolve_image(  # noqa: E731
-            img, source_path, upload_parent, upload_parent_type
+        return serialize_elements(
+            cast(Sequence[Block], materialized),
+            resolve_image=lambda image: self._resolve_image(
+                image, source_path, upload_parent, upload_parent_type
+            ),
         )
-        return serialize_elements(cast(Sequence[Element], materialized), resolver)
 
     def _build_parent(self, provided_parent: str | None) -> dict[str, Any]:
         parent_raw = provided_parent or self.default_parent_page_id
@@ -278,18 +297,18 @@ class NotionClientAdapter(NotionAdapter):
         upload_parent: str | None,
         upload_parent_type: str | None,
     ) -> dict[str, Any]:
-        caption = image.alt or image.src
-        if _is_valid_url(image.src):
-            return _image_block("external", {"url": image.src}, caption)
+        caption = image.alt or image.source
+        if _is_valid_url(image.source):
+            return _image_block("external", {"url": image.source}, caption)
 
         base = os.getenv("MKDOCS2NOTION_ASSET_BASE_URL", "").strip()
         if base and _is_valid_url(base):
-            resolved = urljoin(base.rstrip("/") + "/", image.src.lstrip("/"))
+            resolved = urljoin(base.rstrip("/") + "/", image.source.lstrip("/"))
             if _is_valid_url(resolved):
                 return _image_block("external", {"url": resolved}, caption)
 
         if source_path:
-            local_path = (source_path.parent / image.src).resolve()
+            local_path = (source_path.parent / image.source).resolve()
             if local_path.is_file():
                 file_type, payload = self._upload_local_file(
                     local_path, upload_parent, upload_parent_type
