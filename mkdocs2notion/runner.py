@@ -179,7 +179,6 @@ def run_validate(
     validation_issues.extend(result.warnings)
     validation_issues.extend([warning.format() for warning in logger.warnings])
 
-<<<<<<< HEAD
     if logger.has_warnings():
         for warning in logger.warnings:
             print(f"[WARN] {warning.format()}")
@@ -195,13 +194,6 @@ def run_validate(
     has_warnings = logger.has_warnings() or bool(result.warnings)
     if strict and has_warnings:
         print("Found validation error(s) due to warnings.")
-=======
-    if validation_issues:
-        print("❌ Validation errors:")
-        for issue in validation_issues:
-            print(f" - {issue}")
-        print(f"Found {len(validation_issues)} validation error(s).")
->>>>>>> 14f64fc
         return 1
 
     if not has_warnings:
