@@ -2,9 +2,14 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from mkdocs2notion.loaders.directory import DocumentNode, load_directory
+<<<<<<< HEAD
 from mkdocs2notion.loaders.mkdocs_nav import NavNode, _page_key, load_mkdocs_nav
 from mkdocs2notion.loaders.id_map import PageIdMap
 from mkdocs2notion.markdown.elements import LinkSpan, Page, Paragraph
+=======
+from mkdocs2notion.loaders.id_map import PageIdMap
+from mkdocs2notion.loaders.mkdocs_nav import _page_key, load_mkdocs_nav
+>>>>>>> 14f64fc
 from mkdocs2notion.runner import PublishProgress, _publish_to_notion, build_publish_plan
 from mkdocs2notion.runner import _rewrite_internal_links
 

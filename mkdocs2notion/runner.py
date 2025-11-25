@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Protocol
 
@@ -20,7 +20,6 @@ from .markdown.elements import (
     NumberedListItem,
     Page,
     Paragraph,
-    RawMarkdown,
     StrikethroughSpan,
     Table,
     TableCell,
@@ -159,6 +158,8 @@ def run_validate(
     """Validate markdown files and mkdocs.yml without publishing."""
 
     print("🔧 Validating docs…")
+    if strict:
+        print("Strict mode enabled: warnings will block validation.")
     project: MkdocsProject = load_mkdocs_project(docs_path, mkdocs_yml)
     logger = WarningLogger(docs_path.stem)
 
@@ -174,10 +175,11 @@ def run_validate(
         except MarkdownParseError as exc:
             result.errors.append(f"{document.relative_path}: {exc}")
 
-    if result.warnings:
-        for warning in result.warnings:
-            print(f"[WARN] {warning}")
+    validation_issues = list(result.errors)
+    validation_issues.extend(result.warnings)
+    validation_issues.extend([warning.format() for warning in logger.warnings])
 
+<<<<<<< HEAD
     if logger.has_warnings():
         for warning in logger.warnings:
             print(f"[WARN] {warning.format()}")
@@ -193,6 +195,13 @@ def run_validate(
     has_warnings = logger.has_warnings() or bool(result.warnings)
     if strict and has_warnings:
         print("Found validation error(s) due to warnings.")
+=======
+    if validation_issues:
+        print("❌ Validation errors:")
+        for issue in validation_issues:
+            print(f" - {issue}")
+        print(f"Found {len(validation_issues)} validation error(s).")
+>>>>>>> 14f64fc
         return 1
 
     if not has_warnings:
@@ -472,12 +481,7 @@ def _rewrite_internal_links(
             )
         rewritten_children = tuple(_rewrite_block(child) for child in block.children)
         if rewritten_children != block.children:
-            return type(block)(  # type: ignore[call-arg]
-                **{
-                    **block.__dict__,
-                    "children": rewritten_children,
-                }
-            )
+            return replace(block, children=rewritten_children)
         return block
 
     rewritten_children = tuple(_rewrite_block(child) for child in page.children)
