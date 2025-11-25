@@ -434,6 +434,7 @@ def _rewrite_internal_links(
             )
         if isinstance(block, Callout):
             return Callout(
+                title=block.title,
                 callout_type=block.callout_type,
                 icon=block.icon,
                 children=tuple(_rewrite_block(child) for child in block.children),

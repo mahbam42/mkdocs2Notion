@@ -162,12 +162,13 @@ class Toggle(Block):
 class Callout(Block):
     """Callout/admonition block."""
 
+    title: str
     callout_type: str
     icon: str | None
     type: ClassVar[str] = "callout"
 
     def _serialize(self) -> dict[str, Any]:
-        return {"callout_type": self.callout_type, "icon": self.icon}
+        return {"title": self.title, "callout_type": self.callout_type, "icon": self.icon}
 
 
 @dataclass(frozen=True)

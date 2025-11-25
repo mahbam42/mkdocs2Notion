@@ -1,9 +1,13 @@
 from mkdocs2notion.markdown.elements import (
+    BulletedListItem,
     Callout,
     Image,
+    LinkSpan,
+    NumberedListItem,
     Paragraph,
     RawMarkdown,
     Table,
+    TextSpan,
     Toggle,
 )
 from mkdocs2notion.markdown.parser import parse_markdown
@@ -27,6 +31,8 @@ More
     callout = page.children[0]
     assert isinstance(callout, Callout)
     assert callout.callout_type == "NOTE"
+    assert callout.title == "Heading"
+    assert callout.icon == "💡"
     assert isinstance(callout.children[0], Paragraph)
 
     first_toggle = page.children[1]
@@ -83,3 +89,50 @@ def test_inline_image_becomes_image_block() -> None:
     assert isinstance(page.children[0], Image)
     assert page.children[0].source == "img.png"
     assert page.children[0].alt == "diagram"
+
+
+def test_numbered_list_children_keep_indentation_and_inlines() -> None:
+    content = """1. First item
+    Extra details with a [link](https://example.com)
+    - Nested bullet
+2. Second item
+"""
+
+    page = parse_markdown(content, source_file="list.md")
+
+    first, second = page.children[0], page.children[1]
+    assert isinstance(first, NumberedListItem)
+    assert isinstance(second, NumberedListItem)
+    assert first.children
+    paragraph = first.children[0]
+    assert isinstance(paragraph, Paragraph)
+    assert paragraph.inlines and isinstance(paragraph.inlines[0], TextSpan)
+    assert isinstance(paragraph.inlines[1], LinkSpan)
+    nested = first.children[1]
+    assert isinstance(nested, BulletedListItem)
+    assert nested.text == "Nested bullet"
+
+
+def test_material_callout_with_nested_list_parses_structure() -> None:
+    content = """!!! note "📚 Navigation"
+    - Home
+    - Guide
+        - Overview
+"""
+
+    page = parse_markdown(content, source_file="nav.md")
+
+    callout = page.children[0]
+    assert isinstance(callout, Callout)
+    assert callout.callout_type == "NOTE"
+    assert callout.title == "Navigation"
+    assert callout.icon == "📚"
+
+    home, guide = callout.children[0], callout.children[1]
+    assert isinstance(home, BulletedListItem)
+    assert home.text == "Home"
+    assert isinstance(guide, BulletedListItem)
+    assert guide.text == "Guide"
+    assert guide.children
+    assert isinstance(guide.children[0], BulletedListItem)
+    assert guide.children[0].text == "Overview"

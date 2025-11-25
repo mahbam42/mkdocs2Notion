@@ -132,8 +132,8 @@ def _serialize_block(
 
     if isinstance(element, Callout):
         children = serialize_elements(element.children, resolve_image)
-        content = element.callout_type.title()
-        rich_text, image_blocks = _render_text_and_images((), content, resolve_image)
+        callout_text = element.title or element.callout_type.title()
+        rich_text, image_blocks = _render_text_and_images((), callout_text, resolve_image)
         callout: dict[str, Any] = {
             "type": "callout",
             "callout": {
@@ -303,7 +303,11 @@ def _validated_link(url: str | None) -> str | None:
 
 def _is_valid_url(url: str) -> bool:
     parsed = urlparse(url)
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+    if parsed.scheme in {"http", "https"}:
+        return bool(parsed.netloc)
+    if parsed.scheme == "notion":
+        return bool(parsed.netloc or parsed.path)
+    return False
 
 
 def _default_image_resolver(image: Image) -> dict[str, Any]:

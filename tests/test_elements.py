@@ -39,8 +39,9 @@ def test_table_to_notion_structure() -> None:
 
 
 def test_callout_serialization_keeps_icon() -> None:
-    block = Callout(callout_type="NOTE", icon="💡", children=())
+    block = Callout(title="Hint", callout_type="NOTE", icon="💡", children=())
 
     payload = block.to_notion()
+    assert payload["title"] == "Hint"
     assert payload["callout_type"] == "NOTE"
     assert payload["icon"] == "💡"

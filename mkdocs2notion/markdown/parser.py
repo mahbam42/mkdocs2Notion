@@ -60,6 +60,11 @@ def _parse_lines(
             index += 1
             continue
 
+        if _is_admonition_line(line):
+            callout, index = _parse_admonition(lines, index, source_file, logger)
+            elements.append(callout)
+            continue
+
         if line.startswith("```"):
             code_block, index = _parse_code_block(lines, index, source_file, logger)
             elements.append(code_block)
@@ -91,12 +96,26 @@ def _parse_lines(
             continue
 
         if _is_numbered_list(line):
-            block, index = _parse_list(lines, index, source_file, ordered=True, logger=logger)
+            block, index = _parse_list(
+                lines,
+                index,
+                source_file,
+                ordered=True,
+                logger=logger,
+                indent=_leading_indent(line),
+            )
             elements.extend(block)
             continue
 
         if _is_bullet_list(line):
-            block, index = _parse_list(lines, index, source_file, ordered=False, logger=logger)
+            block, index = _parse_list(
+                lines,
+                index,
+                source_file,
+                ordered=False,
+                logger=logger,
+                indent=_leading_indent(line),
+            )
             elements.extend(block)
             continue
 
@@ -174,23 +193,114 @@ def _parse_list(
     *,
     ordered: bool,
     logger: WarningLogger,
-) -> Tuple[List[Block], int]:
-    items: List[Block] = []
+    indent: int,
+) -> Tuple[List[BulletedListItem | NumberedListItem], int]:
+    items: List[BulletedListItem | NumberedListItem] = []
     while index < len(lines):
         line = lines[index]
         if not _is_bullet_list(line) and not _is_numbered_list(line):
             break
-        bullet_text = line.split(" ", 1)[1]
+        current_indent = _leading_indent(line)
+        if current_indent < indent:
+            break
+        if current_indent > indent:
+            if not items:
+                break
+            nested, index = _parse_list(
+                lines,
+                index,
+                source_file,
+                ordered=_is_numbered_list(line),
+                logger=logger,
+                indent=current_indent,
+            )
+            parent = items[-1]
+            if isinstance(parent, BulletedListItem):
+                items[-1] = BulletedListItem(
+                    text=parent.text,
+                    inlines=parent.inlines,
+                    children=tuple(nested),
+                    source_line=parent.source_line,
+                    source_file=parent.source_file,
+                )
+            else:
+                items[-1] = NumberedListItem(
+                    text=parent.text,
+                    inlines=parent.inlines,
+                    children=tuple(nested),
+                    source_line=parent.source_line,
+                    source_file=parent.source_file,
+                )
+            continue
+        stripped = line.lstrip()
+        if ordered:
+            marker_split = stripped.split(" ", 1)
+            bullet_text = marker_split[1] if len(marker_split) > 1 else ""
+        else:
+            bullet_text = stripped[2:] if stripped.startswith("- ") else stripped
         normalized, inline_content = _parse_inline_formatting(bullet_text)
         item_class = NumberedListItem if ordered else BulletedListItem
-        item = item_class(
+        base_item = item_class(
             text=normalized,
             inlines=tuple(inline_content),
+            children=tuple(),
             source_line=index + 1,
             source_file=source_file,
         )
-        items.append(item)
         index += 1
+
+        child_blocks: List[Block] = []
+        while index < len(lines):
+            if not lines[index].strip():
+                index += 1
+                continue
+            next_indent = _leading_indent(lines[index])
+            if next_indent <= indent and (
+                _is_bullet_list(lines[index]) or _is_numbered_list(lines[index])
+            ):
+                break
+            if next_indent <= indent:
+                break
+
+            if _is_bullet_list(lines[index]) or _is_numbered_list(lines[index]):
+                nested, index = _parse_list(
+                    lines,
+                    index,
+                    source_file,
+                    ordered=_is_numbered_list(lines[index]),
+                    logger=logger,
+                    indent=next_indent,
+                )
+                child_blocks.extend(nested)
+                continue
+
+            block_lines: List[str] = []
+            while index < len(lines):
+                candidate = lines[index]
+                if not candidate.strip():
+                    block_lines.append("")
+                    index += 1
+                    continue
+                candidate_indent = _leading_indent(candidate)
+                if candidate_indent <= indent:
+                    break
+                trimmed = _trim_indent(candidate, indent + 2)
+                if trimmed is None:
+                    break
+                block_lines.append(trimmed)
+                index += 1
+
+            parsed_children, _ = _parse_lines(block_lines, 0, source_file, logger)
+            child_blocks.extend(parsed_children)
+
+        item_with_children = item_class(
+            text=base_item.text,
+            inlines=base_item.inlines,
+            children=tuple(child_blocks),
+            source_line=base_item.source_line,
+            source_file=base_item.source_file,
+        )
+        items.append(item_with_children)
     return items, index
 
 
@@ -246,18 +356,79 @@ def _parse_callout(
         return _raw_block(lines, start, source_file)
 
     callout_type = match.group("type").upper()
-    icon = _CALL_OUT_ICONS.get(callout_type.lower())
-    body = match.group("body").strip()
-    content_lines = [body] if body else []
+    body = _strip_quotes(match.group("body"))
+    content_lines: list[str] = []
     index += 1
     while index < len(lines) and lines[index].startswith(">"):
-        content_lines.append(lines[index][1:].lstrip())
+        body_line = lines[index][1:]
+        if body_line.startswith(" "):
+            body_line = body_line[1:]
+        content_lines.append(body_line)
         index += 1
 
-    children, _ = _parse_lines(content_lines, 0, source_file, logger)
+    title_source: str | None = body
+    child_start = 0
+    if not title_source and content_lines and content_lines[0].strip():
+        title_source = content_lines[0]
+        child_start = 1
+    elif title_source:
+        child_start = 0
+    title, icon_override = _normalize_callout_title(
+        title_source or callout_type.title(), callout_type.title()
+    )
+    child_lines = content_lines[child_start:]
+    children, _ = _parse_lines(child_lines, 0, source_file, logger)
     callout = Callout(
+        title=title,
         callout_type=callout_type,
-        icon=icon,
+        icon=icon_override or _CALL_OUT_ICONS.get(callout_type.lower()),
+        children=tuple(children),
+        source_line=start + 1,
+        source_file=source_file,
+    )
+    return callout, index
+
+
+def _parse_admonition(
+    lines: Sequence[str], index: int, source_file: str, logger: WarningLogger
+) -> Tuple[Block, int]:
+    start = index
+    header = lines[index]
+    match = _ADMONITION_RE.match(header)
+    if not match:
+        logger.warn(
+            filename=source_file,
+            line=start + 1,
+            element_type="Callout",
+            message="unsupported callout syntax, passing through",
+            code="unsupported-block",
+        )
+        return _raw_block(lines, start, source_file)
+
+    callout_type = match.group("type").upper()
+    raw_title = _strip_quotes(match.group("title"))
+    content_lines: list[str] = []
+    index += 1
+    while index < len(lines):
+        trimmed = _trim_indent(lines[index])
+        if trimmed is None:
+            break
+        content_lines.append(trimmed)
+        index += 1
+
+    child_start = 0
+    title_source: str = raw_title or callout_type.title()
+    if not raw_title and content_lines and content_lines[0].strip():
+        title_source = content_lines[0]
+        child_start = 1
+
+    title, icon_override = _normalize_callout_title(title_source, callout_type.title())
+    child_lines = content_lines[child_start:]
+    children, _ = _parse_lines(child_lines, 0, source_file, logger)
+    callout = Callout(
+        title=title,
+        callout_type=callout_type,
+        icon=icon_override or _CALL_OUT_ICONS.get(callout_type.lower()),
         children=tuple(children),
         source_line=start + 1,
         source_file=source_file,
@@ -276,6 +447,55 @@ def _parse_quote(
     children, _ = _parse_lines(content_lines, 0, source_file, logger)
     quote = Quote(children=tuple(children), source_line=start + 1, source_file=source_file)
     return quote, index
+
+
+def _leading_indent(line: str) -> int:
+    indent = 0
+    for char in line:
+        if char == " ":
+            indent += 1
+        elif char == "\t":
+            indent += 4
+        else:
+            break
+    return indent
+
+
+def _trim_indent(line: str, width: int = 4) -> str | None:
+    consumed = 0
+    index = 0
+    while index < len(line) and consumed < width:
+        if line[index] == " ":
+            consumed += 1
+        elif line[index] == "\t":
+            consumed += 4
+        else:
+            break
+        index += 1
+    if consumed < width:
+        return None
+    return line[index:]
+
+
+def _strip_quotes(value: str | None) -> str:
+    if value is None:
+        return ""
+    stripped = value.strip()
+    if len(stripped) >= 2 and stripped[0] == stripped[-1] and stripped[0] in {'"', "'"}:
+        return stripped[1:-1].strip()
+    return stripped
+
+
+def _normalize_callout_title(raw_title: str, fallback: str) -> tuple[str, str | None]:
+    title = raw_title.strip()
+    if not title:
+        return fallback, None
+    emoji_match = _LEADING_EMOJI_RE.match(title)
+    if emoji_match:
+        emoji = emoji_match.group("emoji")
+        remainder = emoji_match.group("title").strip()
+        return remainder or fallback, emoji
+    return title, None
 
 
 def _parse_tabs(
@@ -521,6 +741,13 @@ def _split_target_and_title(content: str) -> tuple[str, str | None]:
 
 _TABLE_DIVIDER_RE = re.compile(r"^\s*\|?(?:\s*:?-+:?\s*\|)+\s*$")
 _CALLOUT_RE = re.compile(r"^>\s*\[!(?P<type>[A-Za-z]+)\]\s*(?P<body>.*)$")
+_ADMONITION_RE = re.compile(r'^!!!\s+(?P<type>[A-Za-z]+)(?:\s+(?P<title>.+))?$')
+_LEADING_EMOJI_RE = re.compile(
+    (
+        r"^(?P<emoji>[\U0001F300-\U0001FAFF\U0001F1E6-\U0001F1FF"
+        r"\u2600-\u26FF\u2700-\u27BF])\s*(?P<title>.*)$"
+    )
+)
 _CALL_OUT_ICONS = {"note": "💡", "tip": "💡", "warning": "⚠️", "info": "ℹ️"}
 
 
@@ -565,6 +792,10 @@ def _starts_block(line: str) -> bool:
 
 def _is_tab_header(line: str) -> bool:
     return line.startswith('=== "') and line.endswith('"')
+
+
+def _is_admonition_line(line: str) -> bool:
+    return bool(_ADMONITION_RE.match(line))
 
 
 def _is_callout_line(line: str) -> bool:
