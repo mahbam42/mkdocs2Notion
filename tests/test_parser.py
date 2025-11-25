@@ -1,4 +1,5 @@
 from mkdocs2notion.markdown.elements import (
+    BoldSpan,
     BulletedListItem,
     Callout,
     Image,
@@ -111,6 +112,22 @@ def test_numbered_list_children_keep_indentation_and_inlines() -> None:
     nested = first.children[1]
     assert isinstance(nested, BulletedListItem)
     assert nested.text == "Nested bullet"
+
+
+def test_star_bullets_preserve_inline_formatting() -> None:
+    content = """* **Managers** — ensuring data stays clean and consistent
+* **Inventory staff** — adjusting stock and reviewing deliveries
+"""
+
+    page = parse_markdown(content, source_file="teams.md")
+
+    managers, staff = page.children
+    assert isinstance(managers, BulletedListItem)
+    assert isinstance(staff, BulletedListItem)
+    assert managers.inlines and isinstance(managers.inlines[0], BoldSpan)
+    assert managers.inlines[0].text == "Managers"
+    assert staff.inlines and isinstance(staff.inlines[0], BoldSpan)
+    assert staff.inlines[0].text == "Inventory staff"
 
 
 def test_material_callout_with_nested_list_parses_structure() -> None:

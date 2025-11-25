@@ -7,6 +7,7 @@ from typing import Iterable, List, Sequence, Tuple
 
 from mkdocs2notion.markdown.elements import (
     Block,
+    BoldSpan,
     BulletedListItem,
     Callout,
     CodeBlock,
@@ -237,7 +238,10 @@ def _parse_list(
             marker_split = stripped.split(" ", 1)
             bullet_text = marker_split[1] if len(marker_split) > 1 else ""
         else:
-            bullet_text = stripped[2:] if stripped.startswith("- ") else stripped
+            if stripped.startswith(("- ", "* ")):
+                bullet_text = stripped[2:]
+            else:
+                bullet_text = stripped
         normalized, inline_content = _parse_inline_formatting(bullet_text)
         item_class = NumberedListItem if ordered else BulletedListItem
         base_item = item_class(
@@ -641,6 +645,26 @@ def _parse_inline_formatting(text: str) -> Tuple[str, List[InlineSpan]]:
             index = closing + 2
             continue
 
+        if text.startswith(("**", "__"), index):
+            delimiter = text[index : index + 2]
+            closing = text.find(delimiter, index + 2)
+            if closing == -1:
+                buffer.append(text[index])
+                index += 1
+                continue
+            inner = text[index + 2 : closing]
+            inner_normalized, inner_inlines = _parse_inline_formatting(inner)
+            if buffer:
+                literal = "".join(buffer)
+                spans.append(TextSpan(text=literal))
+                normalized_parts.append(literal)
+                buffer = []
+            spans.append(BoldSpan(text=inner_normalized or inner))
+            if inner_normalized:
+                normalized_parts.append(inner_normalized)
+            index = closing + 2
+            continue
+
         if text[index] == "[" or (
             text[index] == "!" and index + 1 < len(text) and text[index + 1] == "["
         ):
@@ -779,7 +803,8 @@ def _is_divider(line: str) -> bool:
 
 
 def _is_bullet_list(line: str) -> bool:
-    return line.lstrip().startswith("- ")
+    stripped = line.lstrip()
+    return stripped.startswith("- ") or stripped.startswith("* ")
 
 
 def _is_numbered_list(line: str) -> bool:

@@ -64,13 +64,18 @@ class StrikethroughSpan(TextSpan):
 
 
 @dataclass(frozen=True)
+class BoldSpan(TextSpan):
+    """Bold span for emphasis."""
+
+
+@dataclass(frozen=True)
 class ImageSpan(TextSpan):
     """Inline image with alt text and a source target."""
 
     source: str
 
 
-InlineSpan = TextSpan | LinkSpan | StrikethroughSpan | ImageSpan
+InlineSpan = TextSpan | LinkSpan | StrikethroughSpan | BoldSpan | ImageSpan
 
 
 @dataclass(frozen=True)
@@ -256,6 +261,8 @@ def serialize_inline(inline: InlineSpan) -> dict[str, Any]:
             "text": inline.text,
             "inlines": [serialize_inline(child) for child in inline.inlines],
         }
+    if isinstance(inline, BoldSpan):
+        return {"type": "bold", "text": inline.text}
     if isinstance(inline, ImageSpan):
         return {"type": "image", "text": inline.text, "source": inline.source}
     return {"type": "text", "text": inline.text}

@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 from mkdocs2notion.markdown.elements import (
     Block,
+    BoldSpan,
     BulletedListItem,
     Callout,
     CodeBlock,
@@ -260,6 +261,10 @@ def _render_text_and_images(
 def _rich_text_for_inline(inline: InlineSpan) -> list[dict[str, Any]]:
     if isinstance(inline, LinkSpan):
         return [text_rich(inline.text, url=_validated_link(inline.target))]
+    if isinstance(inline, BoldSpan):
+        bold = text_rich(inline.text)
+        bold["annotations"]["bold"] = True
+        return [bold]
     if isinstance(inline, TextSpan):
         return [text_rich(inline.text)]
     return []
