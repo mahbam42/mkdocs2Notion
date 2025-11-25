@@ -13,6 +13,7 @@ from mkdocs2notion.markdown.elements import (
     Divider,
     Heading,
     Image,
+    ImageSpan,
     InlineSpan,
     LinkSpan,
     NumberedListItem,
@@ -104,8 +105,8 @@ def _parse_lines(
             elements.append(heading)
             continue
 
-        paragraph, index = _parse_paragraph(lines, index, source_file)
-        elements.append(paragraph)
+        paragraph_blocks, index = _parse_paragraph(lines, index, source_file)
+        elements.extend(paragraph_blocks)
     return elements, index
 
 
@@ -126,7 +127,7 @@ def _parse_heading(lines: Sequence[str], index: int, source_file: str) -> Tuple[
 
 def _parse_paragraph(
     lines: Sequence[str], index: int, source_file: str
-) -> Tuple[Paragraph, int]:
+) -> Tuple[List[Block], int]:
     buffer: List[str] = []
     start = index
     while index < len(lines):
@@ -140,13 +141,30 @@ def _parse_paragraph(
         index += 1
     text = " ".join(buffer)
     normalized, inline_content = _parse_inline_formatting(text)
-    paragraph = Paragraph(
-        text=normalized,
-        inlines=tuple(inline_content),
-        source_line=start + 1,
-        source_file=source_file,
-    )
-    return paragraph, index
+    image_spans = [span for span in inline_content if isinstance(span, ImageSpan)]
+    non_image_inlines = [span for span in inline_content if not isinstance(span, ImageSpan)]
+
+    blocks: List[Block] = []
+    if normalized or non_image_inlines:
+        paragraph = Paragraph(
+            text=normalized,
+            inlines=tuple(non_image_inlines),
+            source_line=start + 1,
+            source_file=source_file,
+        )
+        blocks.append(paragraph)
+
+    for image_span in image_spans:
+        blocks.append(
+            Image(
+                source=image_span.source,
+                alt=image_span.text,
+                source_line=start + 1,
+                source_file=source_file,
+            )
+        )
+
+    return blocks, index
 
 
 def _parse_list(
@@ -459,8 +477,8 @@ def _parse_inline_span(text: str, start_index: int):
     if not target:
         return None
     if is_image:
-        span: InlineSpan = TextSpan(text=label)
-        normalized_fragment = label
+        span = ImageSpan(text=label, source=target)
+        normalized_fragment = ""
     else:
         span = LinkSpan(text=label, target=target)
         normalized_fragment = label

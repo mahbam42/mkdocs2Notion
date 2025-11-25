@@ -63,7 +63,14 @@ class StrikethroughSpan(TextSpan):
     inlines: tuple["InlineSpan", ...] = field(default_factory=tuple)
 
 
-InlineSpan = TextSpan | LinkSpan | StrikethroughSpan
+@dataclass(frozen=True)
+class ImageSpan(TextSpan):
+    """Inline image with alt text and a source target."""
+
+    source: str
+
+
+InlineSpan = TextSpan | LinkSpan | StrikethroughSpan | ImageSpan
 
 
 @dataclass(frozen=True)
@@ -248,6 +255,8 @@ def serialize_inline(inline: InlineSpan) -> dict[str, Any]:
             "text": inline.text,
             "inlines": [serialize_inline(child) for child in inline.inlines],
         }
+    if isinstance(inline, ImageSpan):
+        return {"type": "image", "text": inline.text, "source": inline.source}
     return {"type": "text", "text": inline.text}
 
 
@@ -267,6 +276,7 @@ __all__ = [
     "Quote",
     "RawMarkdown",
     "StrikethroughSpan",
+    "ImageSpan",
     "Table",
     "TableCell",
     "TextSpan",

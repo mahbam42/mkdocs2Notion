@@ -1,4 +1,11 @@
-from mkdocs2notion.markdown.elements import Callout, Paragraph, RawMarkdown, Table, Toggle
+from mkdocs2notion.markdown.elements import (
+    Callout,
+    Image,
+    Paragraph,
+    RawMarkdown,
+    Table,
+    Toggle,
+)
 from mkdocs2notion.markdown.parser import parse_markdown
 from mkdocs2notion.utils.logging import WarningLogger
 
@@ -68,3 +75,11 @@ code
 
     assert isinstance(page.children[1], RawMarkdown)
     assert logger.has_warnings()
+
+
+def test_inline_image_becomes_image_block() -> None:
+    page = parse_markdown("![diagram](img.png)\n")
+
+    assert isinstance(page.children[0], Image)
+    assert page.children[0].source == "img.png"
+    assert page.children[0].alt == "diagram"
