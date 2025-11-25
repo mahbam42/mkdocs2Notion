@@ -1,6 +1,7 @@
 from mkdocs2notion.markdown.elements import (
     Heading,
     ImageSpan,
+    LinkSpan,
     Paragraph,
     TextSpan,
 )
@@ -30,3 +31,41 @@ def test_inline_images_render_as_image_blocks() -> None:
     assert payloads[0]["type"] == "paragraph"
     assert payloads[1]["type"] == "image"
     assert payloads[1]["image"]["external"]["url"] == "http://img"
+
+
+def test_invalid_links_fall_back_to_plain_text() -> None:
+    paragraph = Paragraph(
+        text="link",
+        inlines=(LinkSpan(text="link", target="/relative/path"),),
+    )
+
+    payloads = serialize_elements((paragraph,))
+
+    rich_text = payloads[0]["paragraph"]["rich_text"]
+    expected = [
+        {
+            "type": "text",
+            "text": {"content": "link"},
+            "annotations": {
+                "bold": False,
+                "italic": False,
+                "strikethrough": False,
+                "underline": False,
+                "code": False,
+                "color": "default",
+            },
+        }
+    ]
+    assert rich_text == expected
+
+
+def test_valid_links_include_url_metadata() -> None:
+    paragraph = Paragraph(
+        text="link",
+        inlines=(LinkSpan(text="link", target="https://example.com"),),
+    )
+
+    payloads = serialize_elements((paragraph,))
+
+    rich_text = payloads[0]["paragraph"]["rich_text"]
+    assert rich_text[0]["text"]["link"] == {"url": "https://example.com"}
