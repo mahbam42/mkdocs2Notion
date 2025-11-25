@@ -2,7 +2,9 @@ from mkdocs2notion.markdown.elements import (
     BoldSpan,
     BulletedListItem,
     Callout,
+    CodeBlock,
     Image,
+    ItalicSpan,
     LinkSpan,
     NumberedListItem,
     Paragraph,
@@ -153,3 +155,81 @@ def test_material_callout_with_nested_list_parses_structure() -> None:
     assert guide.children
     assert isinstance(guide.children[0], BulletedListItem)
     assert guide.children[0].text == "Overview"
+
+
+def test_inline_italics_are_preserved() -> None:
+    content = "*Whole Milk (16oz)* is easier to match than *Milk - Whole Large Bag*."
+
+    page = parse_markdown(content, source_file="quickstart.md")
+
+    paragraph = page.children[0]
+    assert isinstance(paragraph, Paragraph)
+    assert isinstance(paragraph.inlines[0], ItalicSpan)
+    assert paragraph.inlines[0].text == "Whole Milk (16oz)"
+    assert any(
+        isinstance(inline, ItalicSpan) and inline.text == "Milk - Whole Large Bag"
+        for inline in paragraph.inlines
+    )
+
+
+def test_nested_admonitions_keep_children_and_spacing() -> None:
+    content = """!!! note "Outer note"
+    Lead in content before nested block.
+
+    !!! warning "Inner warning"
+        - Capture the batch ID
+        - Notify the vendor contact
+
+    The outer note continues after the inner block.
+"""
+
+    page = parse_markdown(content, source_file="nested.md")
+
+    outer = page.children[0]
+    assert isinstance(outer, Callout)
+    assert outer.title == "Outer note"
+    assert len(outer.children) == 3
+
+    lead_in, inner, follow_up = outer.children
+    assert isinstance(lead_in, Paragraph)
+    assert isinstance(inner, Callout)
+    assert inner.callout_type == "WARNING"
+    assert inner.title == "Inner warning"
+    assert isinstance(inner.children[0], BulletedListItem)
+    assert isinstance(follow_up, Paragraph)
+
+
+def test_indented_code_block_parses_as_code_block() -> None:
+    content = """Intro
+
+    # Simple CSV export sketch
+        line = ",".join(row)
+
+After
+"""
+
+    page = parse_markdown(content, source_file="code.md")
+
+    intro, code, outro = page.children
+    assert isinstance(intro, Paragraph)
+    assert isinstance(code, CodeBlock)
+    assert code.language is None
+    assert code.code == '# Simple CSV export sketch\n    line = ",".join(row)'
+    assert isinstance(outro, Paragraph)
+
+
+def test_style_blocks_are_removed_before_parsing() -> None:
+    content = """Intro
+<style>
+body { color: red; }
+</style>
+After"""
+
+    page = parse_markdown(content, source_file="style.md")
+
+    assert len(page.children) == 2
+    first, second = page.children
+    assert isinstance(first, Paragraph)
+    assert isinstance(second, Paragraph)
+    assert first.text == "Intro"
+    assert second.text == "After"

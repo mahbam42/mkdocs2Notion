@@ -1,6 +1,7 @@
 from mkdocs2notion.markdown.elements import (
     Heading,
     ImageSpan,
+    ItalicSpan,
     LinkSpan,
     Paragraph,
     TextSpan,
@@ -69,3 +70,12 @@ def test_valid_links_include_url_metadata() -> None:
 
     rich_text = payloads[0]["paragraph"]["rich_text"]
     assert rich_text[0]["text"]["link"] == {"url": "https://example.com"}
+
+
+def test_italic_annotations_render() -> None:
+    paragraph = Paragraph(text="", inlines=(ItalicSpan(text="soft"),))
+
+    payloads = serialize_elements((paragraph,))
+
+    annotations = payloads[0]["paragraph"]["rich_text"][0]["annotations"]
+    assert annotations["italic"] is True

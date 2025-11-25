@@ -8,7 +8,7 @@ Use nested admonitions to ensure indentation and styling survive the import proc
     !!! warning "Inner warning"
         Escalate when a shipment fails quality checks twice in a row.
 
-        - Capture the batch ID for the incident log.
+        - Capture the **batch ID** for the incident log.
         - Notify the vendor contact immediately.
 
     The outer note continues after the inner block to confirm nesting is preserved.

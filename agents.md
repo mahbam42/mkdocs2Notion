@@ -8,7 +8,7 @@ This document defines how agents (contributors, assistants, and automated helper
 
 # **1. Guiding Principles**
 
-1. Always work inside a **feature branch**, never on `main`.
+1. Always work inside a fresh **feature branch**, never on `main`.
 2. Keep every change **small, tested, and documented**.
 3. Do not skip linting, type checking, or pre-commit validation.
 4. Write clear commit messages and add/update tests with every feature.
@@ -41,7 +41,7 @@ pre-commit install
 1. Create a feature branch:
 
    ```bash
-   git switch -c feature/mkdocs-import
+   git checkout -b feature/mkdocs-import
    ```
 2. Implement the feature in small, reviewable increments.
 3. Add Google-style docstrings to all new public modules, classes, and functions.
@@ -50,24 +50,10 @@ pre-commit install
 
 ## **2.3. Testing Requirements**
 
-Use the official Ultimate Notion test flows:
-
-### Offline tests (no API calls):
-
-```bash
-hatch run vcr-only
-```
-
 ### Full test suite (Notion API calls included):
 
 ```bash
 hatch run test
-```
-
-### Regenerate VCR cassettes:
-
-```bash
-hatch run vcr-rewrite
 ```
 
 Every PR must include:
@@ -83,8 +69,8 @@ Every PR must include:
 Run before any commit or PR:
 
 ```bash
-hatch run lint:all
-hatch run lint:fix
+hatch run lint-fix
+hatch run check
 ```
 
 All code must satisfy:
@@ -133,7 +119,6 @@ Rules:
 
 Agents must:
 
-* Verify assumptions against Ultimate Notion’s codebase.
 * Keep changes small and incremental.
 * Update documentation when modifying or adding APIs.
 * Avoid large sweeping changes unless previously approved.
@@ -174,12 +159,10 @@ Before opening a PR:
 * [ ] All public code has Google-style docstrings
 * [ ] New features have tests
 * [ ] Updated behavior has updated tests
-* [ ] `hatch run vcr-only` passes
 * [ ] `hatch run test` passes
-* [ ] `hatch run lint:all` passes
+* [ ] `hatch run lint` passes
 * [ ] All pre-commit hooks pass
 * [ ] Docs updated
-* [ ] `AUTHORS.md` updated (first-time contributors)
 * [ ] PR description is complete
 
 ---
@@ -248,18 +231,9 @@ It can be run manually, or embedded into future automation.
 
 ## **7.3. Testing Suite Enforcement**
 
-* Offline:
-
-  * [ ] `hatch run vcr-only` passes
-
 * Online:
 
   * [ ] `hatch run test` passes
-
-* Cassette checks:
-
-  * [ ] New Notion API calls have updated cassettes
-  * [ ] No unused cassettes
 
 * Coverage checks:
 
@@ -282,7 +256,6 @@ It can be run manually, or embedded into future automation.
 ## **7.5. PR Readiness Tests**
 
 * [ ] PR description includes purpose, approach, files, limitations
-* [ ] AUTHORS.md updated (if applicable)
 * [ ] Branch up to date with `main`
 * [ ] No debug prints or temporary code
 * [ ] Small, review-ready commits

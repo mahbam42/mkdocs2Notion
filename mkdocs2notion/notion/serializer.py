@@ -16,6 +16,7 @@ from mkdocs2notion.markdown.elements import (
     Image,
     ImageSpan,
     InlineSpan,
+    ItalicSpan,
     LinkSpan,
     NumberedListItem,
     Paragraph,
@@ -265,6 +266,10 @@ def _rich_text_for_inline(inline: InlineSpan) -> list[dict[str, Any]]:
         bold = text_rich(inline.text)
         bold["annotations"]["bold"] = True
         return [bold]
+    if isinstance(inline, ItalicSpan):
+        italic = text_rich(inline.text)
+        italic["annotations"]["italic"] = True
+        return [italic]
     if isinstance(inline, TextSpan):
         return [text_rich(inline.text)]
     return []

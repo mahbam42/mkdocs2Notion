@@ -16,6 +16,7 @@ from mkdocs2notion.markdown.elements import (
     Image,
     ImageSpan,
     InlineSpan,
+    ItalicSpan,
     LinkSpan,
     NumberedListItem,
     Page,
@@ -40,7 +41,8 @@ def parse_markdown(
 ) -> Page:
     """Parse Markdown content into a Page block tree."""
 
-    lines = text.splitlines()
+    normalized_text = _strip_style_blocks(text)
+    lines = normalized_text.splitlines()
     active_logger = logger or NullLogger()
     children, _ = _parse_lines(lines, 0, source_file, active_logger)
     title = _infer_title(children)
@@ -118,6 +120,11 @@ def _parse_lines(
                 indent=_leading_indent(line),
             )
             elements.extend(block)
+            continue
+
+        if _is_indented_code_line(line):
+            code_block, index = _parse_indented_code_block(lines, index, source_file)
+            elements.append(code_block)
             continue
 
         if line.startswith("#"):
@@ -343,6 +350,36 @@ def _parse_code_block(
     return block, index + 1
 
 
+def _parse_indented_code_block(
+    lines: Sequence[str], index: int, source_file: str
+) -> Tuple[Block, int]:
+    start_line = index
+    code_lines: list[str] = []
+    while index < len(lines):
+        current = lines[index]
+        if not current.strip():
+            code_lines.append("")
+            index += 1
+            continue
+        if _leading_indent(current) < 4:
+            break
+        trimmed = _trim_indent(current, 4) or ""
+        code_lines.append(trimmed)
+        index += 1
+
+    while code_lines and code_lines[-1] == "":
+        code_lines.pop()
+
+    code = "\n".join(code_lines)
+    block = CodeBlock(
+        language=None,
+        code=code,
+        source_line=start_line + 1,
+        source_file=source_file,
+    )
+    return block, index
+
+
 def _parse_callout(
     lines: Sequence[str], index: int, source_file: str, logger: WarningLogger
 ) -> Tuple[Block, int]:
@@ -414,7 +451,12 @@ def _parse_admonition(
     content_lines: list[str] = []
     index += 1
     while index < len(lines):
-        trimmed = _trim_indent(lines[index])
+        current = lines[index]
+        if not current.strip():
+            content_lines.append("")
+            index += 1
+            continue
+        trimmed = _trim_indent(current)
         if trimmed is None:
             break
         content_lines.append(trimmed)
@@ -616,6 +658,16 @@ def _raw_block(
     )
 
 
+def _strip_style_blocks(text: str) -> str:
+    """Remove embedded <style> blocks to avoid pushing them into Notion."""
+
+    def _replace(match: re.Match[str]) -> str:
+        # Preserve line count by keeping newline placeholders.
+        return "\n" * match.group(0).count("\n")
+
+    return _STYLE_BLOCK_RE.sub(_replace, text)
+
+
 def _parse_inline_formatting(text: str) -> Tuple[str, List[InlineSpan]]:
     spans: List[InlineSpan] = []
     normalized_parts: List[str] = []
@@ -663,6 +715,30 @@ def _parse_inline_formatting(text: str) -> Tuple[str, List[InlineSpan]]:
             if inner_normalized:
                 normalized_parts.append(inner_normalized)
             index = closing + 2
+            continue
+
+        if text[index] in {"*", "_"}:
+            delimiter = text[index]
+            if text.startswith(delimiter * 2, index):
+                buffer.append(text[index])
+                index += 1
+                continue
+            closing = text.find(delimiter, index + 1)
+            if closing == -1:
+                buffer.append(text[index])
+                index += 1
+                continue
+            inner = text[index + 1 : closing]
+            inner_normalized, _inner_inlines = _parse_inline_formatting(inner)
+            if buffer:
+                literal = "".join(buffer)
+                spans.append(TextSpan(text=literal))
+                normalized_parts.append(literal)
+                buffer = []
+            spans.append(ItalicSpan(text=inner_normalized or inner))
+            if inner_normalized:
+                normalized_parts.append(inner_normalized)
+            index = closing + 1
             continue
 
         if text[index] == "[" or (
@@ -763,6 +839,7 @@ def _split_target_and_title(content: str) -> tuple[str, str | None]:
     return cleaned, None
 
 
+_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>.*?</style>", re.IGNORECASE | re.DOTALL)
 _TABLE_DIVIDER_RE = re.compile(r"^\s*\|?(?:\s*:?-+:?\s*\|)+\s*$")
 _CALLOUT_RE = re.compile(r"^>\s*\[!(?P<type>[A-Za-z]+)\]\s*(?P<body>.*)$")
 _ADMONITION_RE = re.compile(r'^!!!\s+(?P<type>[A-Za-z]+)(?:\s+(?P<title>.+))?$')
@@ -825,6 +902,10 @@ def _is_admonition_line(line: str) -> bool:
 
 def _is_callout_line(line: str) -> bool:
     return bool(_CALLOUT_RE.match(line))
+
+
+def _is_indented_code_line(line: str) -> bool:
+    return bool(line.strip()) and _leading_indent(line) >= 4
 
 
 def _infer_title(children: Iterable[object]) -> str:

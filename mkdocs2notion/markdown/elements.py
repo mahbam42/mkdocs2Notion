@@ -69,13 +69,18 @@ class BoldSpan(TextSpan):
 
 
 @dataclass(frozen=True)
+class ItalicSpan(TextSpan):
+    """Italic span for emphasis."""
+
+
+@dataclass(frozen=True)
 class ImageSpan(TextSpan):
     """Inline image with alt text and a source target."""
 
     source: str
 
 
-InlineSpan = TextSpan | LinkSpan | StrikethroughSpan | BoldSpan | ImageSpan
+InlineSpan = TextSpan | LinkSpan | StrikethroughSpan | BoldSpan | ItalicSpan | ImageSpan
 
 
 @dataclass(frozen=True)

@@ -7,6 +7,7 @@ import mimetypes
 import os
 import re
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from pathlib import Path
 from typing import (
     Any,
@@ -224,7 +225,25 @@ class NotionClientAdapter(NotionAdapter):
                 continue
             self.client.blocks.delete(block_id=child["id"])
         if children:
-            self.client.blocks.children.append(block_id=block_id, children=children)
+            self._append_block_tree(block_id, children)
+
+    def _append_block_tree(self, parent_id: str, blocks: list[dict[str, Any]]) -> None:
+        """Append blocks breadth-first, then recursively attach their children."""
+
+        for block in blocks:
+            payload = deepcopy(block)
+            nested_children = _pop_children(payload)
+            response = cast(
+                dict[str, Any],
+                self.client.blocks.children.append(block_id=parent_id, children=[payload]),
+            )
+            if nested_children:
+                new_parent_id = _first_block_id(response)
+                if not new_parent_id:
+                    raise RuntimeError(
+                        "Notion did not return a block id required for nested children."
+                    )
+                self._append_block_tree(new_parent_id, nested_children)
 
     def _normalize_blocks(
         self,
@@ -372,6 +391,34 @@ class NotionClientAdapter(NotionAdapter):
         raise RuntimeError(
             "Unexpected response from Notion file upload; missing file id or url."
         )
+
+
+def _pop_children(block: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Remove and return the embedded children list for a Notion block payload."""
+
+    block_type = block.get("type")
+    if not block_type or block_type == "table":
+        return []
+    contents = block.get(block_type)
+    if isinstance(contents, dict):
+        children = contents.pop("children", None)
+        if isinstance(children, list):
+            return children
+    return []
+
+
+def _first_block_id(response: Mapping[str, Any]) -> str | None:
+    """Extract the first block id from a Notion append response."""
+
+    results = response.get("results")
+    if not isinstance(results, list) or not results:
+        return None
+    first = results[0]
+    if isinstance(first, Mapping):
+        block_id = first.get("id")
+        if isinstance(block_id, str):
+            return block_id
+    return None
 
 
 def _normalize_parent_id(raw_id: str) -> str:
