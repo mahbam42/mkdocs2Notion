@@ -210,7 +210,7 @@ def _parse_code_block(
             filename=source_file,
             line=start_line + 1,
             element_type="CodeBlock",
-            message="unterminated code fence, treating as raw markdown",
+            message="Unterminated code fence, treating as raw markdown",
             code="file-io-warning",
         )
         raw = RawMarkdown(

@@ -165,6 +165,9 @@ def run_validate(
 
     result = project.validate_structure()
 
+    errors = list(result.errors)
+    warnings = list(result.warnings)
+
     for document in project.directory_tree.documents:
         try:
             parse_markdown(
@@ -173,23 +176,28 @@ def run_validate(
                 logger=logger,
             )
         except MarkdownParseError as exc:
-            result.errors.append(f"{document.relative_path}: {exc}")
+            errors.append(f"{document.relative_path}: {exc}")
 
-    validation_issues = list(result.errors)
-    validation_issues.extend(result.warnings)
-    validation_issues.extend([warning.format() for warning in logger.warnings])
+    parse_warnings = [warning.format() for warning in logger.warnings]
+    errors.extend(parse_warnings)
 
     if logger.has_warnings():
         print(logger.summary())
 
-    if result.errors:
+    if errors:
         print("❌ Validation errors:")
-        for e in result.errors:
+        for e in errors:
             print(f" - {e}")
-        print(f"Found {len(result.errors)} validation error(s).")
+        print(f"Found {len(errors)} validation error(s).")
         return 1
-    if strict and logger.has_warnings():
-        return 1
+
+    if warnings:
+        print("⚠️ Validation warnings:")
+        for warning in warnings:
+            print(f" - {warning}")
+        print(f"Found {len(warnings)} warning(s).")
+        if strict:
+            return 1
 
     print("✅ All checks passed.")
     return 0
