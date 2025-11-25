@@ -4,70 +4,39 @@ This document explains the Markdown element model and the deterministic parsing 
 
 ## Element Model
 
-Elements are immutable dataclasses defined in `mkdocs2notion/markdown/elements.py`. Each element exposes a `type` identifier and a `to_dict()` method for stable serialization.
+Elements are immutable dataclasses defined in `mkdocs2notion/markdown/elements.py`. Each block exposes a `type` identifier and `to_notion()` for stable serialization.
 
 Key blocks:
-- `Page` holds an ordered list of child elements and the derived title.
-- `Heading`, `Paragraph`, `List`, `ListItem`, `CodeBlock`, and `Admonition` represent structural blocks.
-<<<<<<< HEAD
-- `List.to_dict()` normalizes the shape by keeping `type: "list"` and an `ordered` flag rather than varying the type value.
-- Inline elements include `Text`, `Link`, and `Image`, which appear inside headings, paragraphs, and list items. Images currently support external URLs; relative/inline file paths are parsed but not resolved or uploaded.
-=======
-- `TaskList` / `TaskItem` preserve checkbox state for task blocks.
-- `DefinitionList` / `DefinitionItem` map terms to ordered description content.
-- `Table` groups `TableRow` and `TableCell` elements, optionally tracking a caption.
-- `List.to_dict()` normalizes the shape by keeping `type: "list"` and an `ordered` flag rather than varying the type value.
-- Inline elements include `Text`, `Link`, `Image`, and `Strikethrough`, which appear inside headings, paragraphs, and list items. Images currently support external URLs; relative/inline file paths are parsed but not resolved or uploaded.
->>>>>>> cf611b4 (strikethrough, tables, todo list, and dictionary lists now supported)
+- `Page` holds ordered child blocks and the derived title.
+- Structural blocks include `Heading`, `Paragraph`, `BulletedListItem`, `NumberedListItem`, `Quote`, `Toggle` (for tab content), `Callout`, `CodeBlock`, `Table`/`TableCell`, `Divider`, `Image`, and `RawMarkdown` for passthroughs.
+- Inline spans include `TextSpan`, `LinkSpan`, `ImageSpan`, and `StrikethroughSpan`; spans attach to headings, paragraphs, list items, toggles, and table cells. Strikethrough spans can nest other inline spans.
+- Paragraph parsing extracts inline images into standalone `Image` blocks while keeping other inline spans in the paragraph `inlines` field.
 
 ## Parsing Pipeline
 
 1. `parse_markdown` splits text into lines and delegates to `_parse_lines`.
-2. `_parse_lines` walks line-by-line, identifying block types via leading markers (`#`, list markers, ``` fences, `!!!`).
-3. Specialized helpers (`_parse_heading`, `_parse_list`, `_parse_code_block`, `_parse_admonition`, `_parse_paragraph`) build block elements.
-4. Inline parsing via `_parse_inline_formatting` extracts links and images while maintaining normalized text for headings and paragraphs.
+2. `_parse_lines` walks line-by-line, matching blocks in priority order: code fences, tabs (`=== "Title"` → `Toggle`), callouts (`> [!TYPE]`), block quotes, GitHub-flavored tables, dividers, numbered lists, bullet lists, headings, and finally paragraphs.
+3. Specialized helpers (`_parse_heading`, `_parse_paragraph`, `_parse_list`, `_parse_code_block`, `_parse_callout`, `_parse_quote`, `_parse_tabs`, `_parse_table`) build blocks and recurse as needed for nested content.
+4. Inline parsing via `_parse_inline_formatting` normalizes text and produces ordered inline spans. It supports links, images, and strikethrough (`~~text~~`); unsupported inline formatting is treated as literal text.
+5. `_parse_code_block`, `_parse_callout`, and `_parse_table` fall back to `RawMarkdown` with warnings when input is malformed (unterminated fences, bad callout header, invalid table divider). Tabs are also passed through as raw markdown when headers are malformed or empty.
+6. Title inference prefers the first level-1 heading; otherwise, `Document` is used.
 
 ## Inline Tokenization
 
-Inline tokens follow `[text](target)` for links and `![alt](src)` for images. The parser records inline elements in order and also produces a normalized text string that merges literal text with link labels.
+Inline tokens follow `[text](target)` for links and `![alt](src)` for images. Strikethrough uses `~~` pairs and can wrap nested spans. The parser records spans in order and also produces a normalized text string that merges literal text with link labels.
 
 ## Extension Points
 
-- Add new inline types by extending the `InlineContent` union and updating `_parse_inline_formatting`.
+- Add new inline types by extending the inline span union and updating `_parse_inline_formatting`.
 - Add new block-level elements by introducing additional detection branches in `_parse_lines` and corresponding parsing helpers.
-- `Page.to_dict()` output is stable, making downstream adapters easy to implement or extend.
+- `Page.to_notion()` output is stable, making downstream adapters easy to implement or extend.
 
 ## Known Limitations
 
-- Inline formatting is limited to links, images, and strikethrough; emphasis or code spans are treated as plain text.
-- Admonition detection relies on four-space indents for content.
-- Lists are flat and do not parse nested list structures.
-- Code blocks require fenced backticks and do not currently support indented code blocks.
+- Inline formatting is limited to links, images, and strikethrough; emphasis/strong/code spans are treated as plain text.
+- List handling is flat; nested lists are not parsed.
+- Tab blocks require the mkdocs-material `=== "Title"` pattern; malformed tabs are passed through as raw markdown.
+- Callouts only support `[!TYPE]` headers and map type to icon via a small hardcoded set.
+- GitHub-flavored table parsing expects a header row followed by a divider row; malformed tables become `RawMarkdown`.
+- Code blocks require fenced backticks; indented code blocks are not parsed.
 - Footnotes are currently ignored by the parser and serializer.
-
-## Notion API Integration
-
-This stage owns the communication with Notion after Markdown has been parsed and serialized.
-It should remain idempotent so reruns update existing pages instead of duplicating them, and
-it must be resilient to API limits.
-
-### Core API Operations
-
-- Create new pages within a chosen parent (database, page, or configured default root)
-- Update existing pages when page IDs are known
-- Batch-insert serialized content blocks to honor request size limits
-- Upload images via multipart file uploads or external URLs
-- Link pages together to mirror navigation structure
-
-### Sync Logic
-
-- Maintain a map of MkDocs paths to Notion page IDs to keep updates deterministic
-- Optionally detect changed files for incremental syncs
-- Reconcile deleted pages when entries disappear from the source tree
-- Support both incremental runs and full re-imports
-
-### Error Handling
-
-- Respect Notion API rate limits (3 requests per second) with retries and backoff
-- Handle pagination for large block trees
-- Surface actionable errors when uploads fail or parents are misconfigured

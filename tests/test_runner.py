@@ -2,8 +2,8 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from mkdocs2notion.loaders.directory import DocumentNode, load_directory
-from mkdocs2notion.loaders.mkdocs_nav import _page_key, load_mkdocs_nav
 from mkdocs2notion.loaders.id_map import PageIdMap
+from mkdocs2notion.loaders.mkdocs_nav import _page_key, load_mkdocs_nav
 from mkdocs2notion.runner import PublishProgress, _publish_to_notion, build_publish_plan
 
 

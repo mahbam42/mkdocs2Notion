@@ -8,7 +8,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-
 WARN_CODES = {
     "missing-page": "W001",
     "unresolved-link": "W002",

@@ -196,7 +196,7 @@ def _parse_list(
 
 def _parse_code_block(
     lines: Sequence[str], index: int, source_file: str, logger: WarningLogger
-) -> Tuple[CodeBlock, int]:
+) -> Tuple[Block, int]:
     opening = lines[index]
     language = opening.strip("`").strip() or None
     start_line = index
@@ -280,8 +280,8 @@ def _parse_quote(
 
 def _parse_tabs(
     lines: Sequence[str], index: int, source_file: str, logger: WarningLogger
-) -> Tuple[List[Toggle], int]:
-    toggles: List[Toggle] = []
+) -> Tuple[List[Block], int]:
+    toggles: List[Block] = []
     start = index
     while index < len(lines) and _is_tab_header(lines[index]):
         header = lines[index]
@@ -457,7 +457,9 @@ def _parse_inline_formatting(text: str) -> Tuple[str, List[InlineSpan]]:
     return normalized_text, spans
 
 
-def _parse_inline_span(text: str, start_index: int):
+def _parse_inline_span(
+    text: str, start_index: int
+) -> tuple[int, int, InlineSpan, str] | None:
     is_image = text[start_index] == "!"
     bracket_index = start_index + 1 if is_image else start_index
     if bracket_index >= len(text) or text[bracket_index] != "[":
@@ -477,7 +479,7 @@ def _parse_inline_span(text: str, start_index: int):
     if not target:
         return None
     if is_image:
-        span = ImageSpan(text=label, source=target)
+        span: InlineSpan = ImageSpan(text=label, source=target)
         normalized_fragment = ""
     else:
         span = LinkSpan(text=label, target=target)
@@ -485,7 +487,9 @@ def _parse_inline_span(text: str, start_index: int):
     return start_index, closing_paren_index + 1, span, normalized_fragment
 
 
-def _extract_balanced(text: str, start_index: int, opener: str, closer: str):
+def _extract_balanced(
+    text: str, start_index: int, opener: str, closer: str
+) -> tuple[str, int] | None:
     if text[start_index] != opener:
         return None
     depth = 1
@@ -505,7 +509,7 @@ def _extract_balanced(text: str, start_index: int, opener: str, closer: str):
 _TITLE_PATTERN = re.compile(r"^(?P<target>.+?)\s+(?P<title>(\".*\"|'.*'))$")
 
 
-def _split_target_and_title(content: str):
+def _split_target_and_title(content: str) -> tuple[str, str | None]:
     cleaned = content.strip()
     if not cleaned:
         return "", None
