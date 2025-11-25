@@ -28,3 +28,14 @@ def test_validate_command_reports_errors(tmp_path: Path) -> None:
     assert result.exit_code == 1
     assert "Unterminated code fence" in result.output
     assert "validation error(s)" in result.output
+
+
+def test_validate_command_can_ignore_warnings(tmp_path: Path) -> None:
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "index.md").write_text("```python\nprint('hi')", encoding="utf-8")
+
+    result = runner.invoke(app, ["validate", str(docs_dir), "--no-strict"])
+
+    assert result.exit_code == 0
+    assert "Unterminated code fence" in result.output

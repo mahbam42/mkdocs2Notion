@@ -179,6 +179,8 @@ def run_validate(
             print(f"[WARN] {warning}")
 
     if logger.has_warnings():
+        for warning in logger.warnings:
+            print(f"[WARN] {warning.format()}")
         print(logger.summary())
 
     if result.errors:
@@ -187,10 +189,14 @@ def run_validate(
             print(f" - {e}")
         print(f"Found {len(result.errors)} validation error(s).")
         return 1
-    if strict and logger.has_warnings():
+
+    has_warnings = logger.has_warnings() or bool(result.warnings)
+    if strict and has_warnings:
+        print("Found validation error(s) due to warnings.")
         return 1
 
-    print("✅ All checks passed.")
+    if not has_warnings:
+        print("✅ All checks passed.")
     return 0
 
 
