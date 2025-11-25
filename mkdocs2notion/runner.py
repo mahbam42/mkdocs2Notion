@@ -85,9 +85,10 @@ def run_push(
     from .notion.api_adapter import get_default_adapter
 
     adapter = get_default_adapter()
-    active_logger = logger or WarningLogger(docs_path.stem)
-
     project: MkdocsProject = load_mkdocs_project(docs_path, mkdocs_yml)
+    active_logger = logger or WarningLogger(
+        project.docs_path.name, source_root=project.docs_path
+    )
 
     for document in project.directory_tree.documents:
         parse_markdown(
@@ -125,12 +126,18 @@ def run_push(
 
 def run_dry_run(
     docs_path: Path, mkdocs_yml: Optional[Path], *, logger: WarningLogger | None = None
-) -> None:
-    """Print what the tool *would* do without contacting the Notion API."""
+) -> WarningLogger:
+    """Print what the tool *would* do without contacting the Notion API.
+
+    Returns:
+        WarningLogger: Captured warnings from parsing the provided docs.
+    """
 
     print("🔎 Dry run: scanning directory…")
     project: MkdocsProject = load_mkdocs_project(docs_path, mkdocs_yml)
-    active_logger = logger or WarningLogger(docs_path.stem)
+    active_logger = logger or WarningLogger(
+        project.docs_path.name, source_root=project.docs_path
+    )
 
     for document in project.directory_tree.documents:
         parse_markdown(
@@ -150,6 +157,7 @@ def run_dry_run(
     if active_logger.has_warnings():
         print(active_logger.summary())
     print("\n(no changes made)")
+    return active_logger
 
 
 def run_validate(
@@ -161,7 +169,7 @@ def run_validate(
     if strict:
         print("Strict mode enabled: warnings will block validation.")
     project: MkdocsProject = load_mkdocs_project(docs_path, mkdocs_yml)
-    logger = WarningLogger(docs_path.stem)
+    logger = WarningLogger(project.docs_path.name, source_root=project.docs_path)
 
     result = project.validate_structure()
 

@@ -15,7 +15,6 @@ from rich.progress import (
 )
 
 from .runner import PublishProgress, run_dry_run, run_push, run_validate
-from .utils.logging import WarningLogger
 
 if TYPE_CHECKING:
     from .loaders.directory import DocumentNode
@@ -179,8 +178,7 @@ def dry_run(
     Example:
         mkdocs2notion dry-run docs/
     """
-    logger = WarningLogger(docs_path.stem)
-    run_dry_run(docs_path, mkdocs_yml, logger=logger)
+    logger = run_dry_run(docs_path, mkdocs_yml)
     if logger.has_warnings():
         print(logger.summary())
     if strict and logger.has_warnings():

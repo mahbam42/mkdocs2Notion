@@ -70,7 +70,7 @@ Run before any commit or PR:
 
 ```bash
 hatch run lint-fix
-hatch run check
+hatch run checks
 ```
 
 All code must satisfy:

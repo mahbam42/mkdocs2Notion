@@ -28,18 +28,19 @@ class WarningEntry:
     code: str
 
     def format(self) -> str:
-        location = f"{self.filename}:{self.line}" if self.line else self.filename
-        return f"{location} [{self.element_type}] {self.message}"
+        location = f"{self.filename}:{self.line}" if self.line is not None else self.filename
+        return f"{location} [{self.code}][{self.element_type}] {self.message}"
 
 
 class WarningLogger:
     """Collect warnings and write them to a timestamped log file."""
 
-    def __init__(self, root_name: str) -> None:
+    def __init__(self, root_name: str, *, source_root: Path | None = None) -> None:
         sanitized = re.sub(r"[^A-Za-z0-9_-]", "_", root_name) or "docs"
         timestamp = datetime.now().strftime("%Y-%m-%d-%H%M")
         self.log_path = Path("logs") / f"{sanitized}_{timestamp}.log"
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        self._source_root = source_root.resolve() if source_root else None
         self._warnings: List[WarningEntry] = []
 
     @property
@@ -56,8 +57,9 @@ class WarningLogger:
         code: str,
     ) -> None:
         code = WARN_CODES.get(code, code)
+        normalized_filename = self._format_filename(filename)
         entry = WarningEntry(
-            filename=filename,
+            filename=normalized_filename,
             line=line,
             element_type=element_type,
             message=message,
@@ -73,12 +75,24 @@ class WarningLogger:
     def has_warnings(self) -> bool:
         return bool(self._warnings)
 
+    def _format_filename(self, filename: str) -> str:
+        path = Path(filename)
+        if self._source_root:
+            candidate = path if path.is_absolute() else (self._source_root / path).resolve()
+            try:
+                relative = candidate.relative_to(self._source_root)
+                return (Path(self._source_root.name) / relative).as_posix()
+            except ValueError:
+                return candidate.as_posix()
+        return path.as_posix()
+
 
 class NullLogger(WarningLogger):  # pragma: no cover - trivial shim
     """Logger that swallows warnings but keeps API compatibility."""
 
-    def __init__(self) -> None:
+    def __init__(self, source_root: Path | None = None) -> None:
         self.log_path = Path("/dev/null")
+        self._source_root = source_root.resolve() if source_root else None
         self._warnings: list[WarningEntry] = []
 
     def warn(
@@ -90,9 +104,10 @@ class NullLogger(WarningLogger):  # pragma: no cover - trivial shim
         message: str,
         code: str,
     ) -> None:
+        normalized_filename = self._format_filename(filename)
         self._warnings.append(
             WarningEntry(
-                filename=filename,
+                filename=normalized_filename,
                 line=line,
                 element_type=element_type,
                 message=message,
