@@ -209,8 +209,8 @@ def validate(
         help="Optional mkdocs.yml file to validate alongside.",
     ),
     strict: bool = typer.Option(
-        True,
-        "--strict/--no-strict",
+        False,
+        "--strict",
         help="Exit with code 1 when warnings are present.",
     ),
 ) -> None:

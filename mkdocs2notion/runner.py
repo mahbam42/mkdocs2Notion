@@ -180,8 +180,6 @@ def run_validate(
     validation_issues.extend([warning.format() for warning in logger.warnings])
 
     if logger.has_warnings():
-        for warning in logger.warnings:
-            print(f"[WARN] {warning.format()}")
         print(logger.summary())
 
     if result.errors:
@@ -190,14 +188,10 @@ def run_validate(
             print(f" - {e}")
         print(f"Found {len(result.errors)} validation error(s).")
         return 1
-
-    has_warnings = logger.has_warnings() or bool(result.warnings)
-    if strict and has_warnings:
-        print("Found validation error(s) due to warnings.")
+    if strict and logger.has_warnings():
         return 1
 
-    if not has_warnings:
-        print("✅ All checks passed.")
+    print("✅ All checks passed.")
     return 0
 
 
@@ -368,10 +362,6 @@ def _rewrite_internal_links(
             return link_targets.get(f"{normalized}.md")
         return None
 
-    def _notion_share_url(page_id: str) -> str:
-        sanitized = page_id.replace("-", "")
-        return f"https://www.notion.so/{sanitized}"
-
     def _rewrite_inline(inline: TextSpan | LinkSpan | StrikethroughSpan) -> InlineSpan:
         if isinstance(inline, LinkSpan):
             if not nav_tree:
@@ -384,7 +374,7 @@ def _rewrite_internal_links(
                 return inline
             target_id = _resolve_link(inline.target)
             if target_id:
-                return LinkSpan(text=inline.text, target=_notion_share_url(target_id))
+                return LinkSpan(text=inline.text, target=f"notion://{target_id}")
             unresolved.append(inline.target)
             return TextSpan(text=inline.text)
         if isinstance(inline, StrikethroughSpan) and inline.inlines:
