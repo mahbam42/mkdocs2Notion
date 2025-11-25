@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Callable, Iterable, Sequence, Tuple
+from urllib.parse import urlparse
 
 from mkdocs2notion.markdown.elements import (
     Block,
@@ -258,7 +259,9 @@ def _render_text_and_images(
 
 def _rich_text_for_inline(inline: InlineSpan) -> list[dict[str, Any]]:
     if isinstance(inline, LinkSpan):
-        return [text_rich(inline.text, url=inline.target)]
+        if _is_valid_link_target(inline.target):
+            return [text_rich(inline.text, url=inline.target)]
+        return [text_rich(inline.text)]
     if isinstance(inline, TextSpan):
         return [text_rich(inline.text)]
     return []
@@ -303,6 +306,17 @@ def _default_image_resolver(image: Image) -> dict[str, Any]:
             "caption": [text_rich(image.alt or image.source)],
         },
     }
+
+
+def _is_valid_link_target(url: str) -> bool:
+    """Return True when the url is acceptable for Notion rich text links."""
+
+    parsed = urlparse(url)
+    if parsed.scheme in {"http", "https"}:
+        return bool(parsed.netloc)
+    if parsed.scheme in {"mailto", "tel"}:
+        return bool(parsed.path)
+    return False
 
 
 __all__ = ["serialize_elements", "collect_images"]

@@ -2,9 +2,11 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from mkdocs2notion.loaders.directory import DocumentNode, load_directory
-from mkdocs2notion.loaders.mkdocs_nav import _page_key, load_mkdocs_nav
+from mkdocs2notion.loaders.mkdocs_nav import NavNode, _page_key, load_mkdocs_nav
 from mkdocs2notion.loaders.id_map import PageIdMap
+from mkdocs2notion.markdown.elements import LinkSpan, Page, Paragraph
 from mkdocs2notion.runner import PublishProgress, _publish_to_notion, build_publish_plan
+from mkdocs2notion.runner import _rewrite_internal_links
 
 
 class RecordingAdapter:
@@ -97,3 +99,19 @@ def test_publish_reports_progress(sample_docs_path: Path, tmp_path: Path) -> Non
 
     assert progress.started_with == 4
     assert progress.finished
+
+
+def test_internal_links_use_shareable_notion_urls() -> None:
+    nav_root = NavNode(title="root", children=[NavNode(title="Home", file="index.md")])
+    nav_root.assign_paths()
+    page = Page(
+        title="Home",
+        children=(Paragraph(text="", inlines=(LinkSpan(text="Start", target="nav://index.md"),)),),
+    )
+
+    rewritten, unresolved = _rewrite_internal_links(page, nav_root, {"index.md": "1234-5678"})
+
+    rewritten_link = rewritten.children[0].inlines[0]
+    assert isinstance(rewritten_link, LinkSpan)
+    assert rewritten_link.target == "https://www.notion.so/12345678"
+    assert unresolved == []
