@@ -15,6 +15,7 @@ from rich.progress import (
 )
 
 from .runner import PublishProgress, run_dry_run, run_push, run_validate
+from .utils.logging import WarningLogger
 
 if TYPE_CHECKING:
     from .loaders.directory import DocumentNode
@@ -116,6 +117,11 @@ def push(
         "-f",
         help="Ignore cached Notion page IDs when pushing.",
     ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Fail when parse warnings are encountered instead of pushing.",
+    ),
 ) -> None:
     """
     Push a directory of Markdown documents to Notion.
@@ -128,7 +134,14 @@ def push(
 
     """
     progress = RichPublishProgress(console)
-    run_push(docs_path, mkdocs_yml, parent_page_id, fresh=fresh, progress=progress)
+    run_push(
+        docs_path,
+        mkdocs_yml,
+        parent_page_id,
+        fresh=fresh,
+        progress=progress,
+        strict=strict,
+    )
 
 
 @app.command("dry-run")
@@ -152,6 +165,11 @@ def dry_run(
         dir_okay=False,
         help="Optional mkdocs.yml used for structure.",
     ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Exit non-zero when warnings occur during dry-run.",
+    ),
 ) -> None:
     """
     Perform a dry run without touching Notion.
@@ -161,7 +179,12 @@ def dry_run(
     Example:
         mkdocs2notion dry-run docs/
     """
-    run_dry_run(docs_path, mkdocs_yml)
+    logger = WarningLogger(docs_path.stem)
+    run_dry_run(docs_path, mkdocs_yml, logger=logger)
+    if logger.has_warnings():
+        print(logger.summary())
+    if strict and logger.has_warnings():
+        raise typer.Exit(code=1)
 
 
 @app.command("validate")
@@ -185,6 +208,11 @@ def validate(
         dir_okay=False,
         help="Optional mkdocs.yml file to validate alongside.",
     ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Exit with code 1 when warnings are present.",
+    ),
 ) -> None:
     """
     Validate that the docs directory and mkdocs.yml (if supplied)
@@ -196,7 +224,7 @@ def validate(
     - no duplicate page names
     - relative paths are correct
     """
-    exit_code = run_validate(docs_path, mkdocs_yml)
+    exit_code = run_validate(docs_path, mkdocs_yml, strict=strict)
     if exit_code:
         raise typer.Exit(code=exit_code)
 

@@ -11,28 +11,24 @@ from .loaders.id_map import PageIdMap
 from .loaders.mkdocs_nav import NavNode, _page_key
 from .loaders.mkdocs_project import MkdocsProject, load_mkdocs_project
 from .markdown.elements import (
-    Admonition,
-    DefinitionItem,
-    DefinitionList,
-    Element,
+    Block,
+    BulletedListItem,
+    Callout,
     Heading,
-    InlineContent,
-    Link,
-    ListItem,
+    InlineSpan,
+    LinkSpan,
+    NumberedListItem,
     Page,
     Paragraph,
-    Strikethrough,
+    RawMarkdown,
+    StrikethroughSpan,
     Table,
     TableCell,
-    TableRow,
-    TaskItem,
-    TaskList,
-    Text,
-)
-from .markdown.elements import (
-    List as ListElement,
+    TextSpan,
+    Toggle,
 )
 from .markdown.parser import MarkdownParseError, parse_markdown
+from .utils.logging import WarningLogger
 
 if TYPE_CHECKING:  # pragma: no cover
     from .notion.api_adapter import NotionAdapter
@@ -74,6 +70,9 @@ def run_push(
     parent_page_id: Optional[str] = None,
     fresh: bool = False,
     progress: PublishProgress | None = None,
+    *,
+    strict: bool = False,
+    logger: WarningLogger | None = None,
 ) -> None:
     """
     Push a directory of Markdown files to Notion.
@@ -87,8 +86,20 @@ def run_push(
     from .notion.api_adapter import get_default_adapter
 
     adapter = get_default_adapter()
+    active_logger = logger or WarningLogger(docs_path.stem)
 
     project: MkdocsProject = load_mkdocs_project(docs_path, mkdocs_yml)
+
+    for document in project.directory_tree.documents:
+        parse_markdown(
+            document.content,
+            source_file=document.relative_path,
+            logger=active_logger,
+        )
+
+    if strict and active_logger.has_warnings():
+        print(active_logger.summary())
+        raise SystemExit(1)
 
     print(f"📁 Loading markdown directory: {project.docs_path}")
     if project.mkdocs_yml:
@@ -104,17 +115,30 @@ def run_push(
         id_map=id_map,
         parent_page_id=parent_page_id,
         progress=progress,
+        logger=active_logger,
     )
 
     id_map.save()
+    if active_logger.has_warnings():
+        print(active_logger.summary())
     print("✅ Push complete.")
 
 
-def run_dry_run(docs_path: Path, mkdocs_yml: Optional[Path]) -> None:
+def run_dry_run(
+    docs_path: Path, mkdocs_yml: Optional[Path], *, logger: WarningLogger | None = None
+) -> None:
     """Print what the tool *would* do without contacting the Notion API."""
 
     print("🔎 Dry run: scanning directory…")
     project: MkdocsProject = load_mkdocs_project(docs_path, mkdocs_yml)
+    active_logger = logger or WarningLogger(docs_path.stem)
+
+    for document in project.directory_tree.documents:
+        parse_markdown(
+            document.content,
+            source_file=document.relative_path,
+            logger=active_logger,
+        )
 
     nav_tree = project.nav_tree
     if project.mkdocs_yml and nav_tree:
@@ -124,20 +148,29 @@ def run_dry_run(docs_path: Path, mkdocs_yml: Optional[Path]) -> None:
     print("📄 Directory structure:")
     print(project.pretty_nav())
 
+    if active_logger.has_warnings():
+        print(active_logger.summary())
     print("\n(no changes made)")
 
 
-def run_validate(docs_path: Path, mkdocs_yml: Optional[Path]) -> int:
+def run_validate(
+    docs_path: Path, mkdocs_yml: Optional[Path], *, strict: bool = False
+) -> int:
     """Validate markdown files and mkdocs.yml without publishing."""
 
     print("🔧 Validating docs…")
     project: MkdocsProject = load_mkdocs_project(docs_path, mkdocs_yml)
+    logger = WarningLogger(docs_path.stem)
 
     result = project.validate_structure()
 
     for document in project.directory_tree.documents:
         try:
-            parse_markdown(document.content)
+            parse_markdown(
+                document.content,
+                source_file=document.relative_path,
+                logger=logger,
+            )
         except MarkdownParseError as exc:
             result.errors.append(f"{document.relative_path}: {exc}")
 
@@ -145,14 +178,19 @@ def run_validate(docs_path: Path, mkdocs_yml: Optional[Path]) -> int:
         for warning in result.warnings:
             print(f"[WARN] {warning}")
 
+    if logger.has_warnings():
+        print(logger.summary())
+
     if result.errors:
         print("❌ Validation errors:")
         for e in result.errors:
             print(f" - {e}")
         print(f"Found {len(result.errors)} validation error(s).")
         return 1
-    else:
-        print("✅ All checks passed.")
+    if strict and logger.has_warnings():
+        return 1
+
+    print("✅ All checks passed.")
     return 0
 
 
@@ -199,6 +237,7 @@ def _publish_to_notion(
     id_map: PageIdMap,
     parent_page_id: Optional[str],
     progress: PublishProgress | None = None,
+    logger: WarningLogger | None = None,
 ) -> None:
     """Publish documents to Notion respecting navigation ordering."""
 
@@ -225,9 +264,14 @@ def _publish_to_notion(
 
         link_targets = {_page_key(item.nav_node): id_map.get(_page_key(item.nav_node)) for item in publish_plan}
 
+        active_logger = logger or WarningLogger("docs")
         for item in publish_plan:
             content = _prepare_document_content(item.document, nav_tree)
-            parsed_page = parse_markdown(content)
+            parsed_page = parse_markdown(
+                content,
+                source_file=item.document.relative_path if item.document else "",
+                logger=active_logger,
+            )
             rewritten_page, unresolved = _rewrite_internal_links(
                 parsed_page, nav_tree, link_targets
             )
@@ -317,8 +361,8 @@ def _rewrite_internal_links(
             return link_targets.get(f"{normalized}.md")
         return None
 
-    def _rewrite_inline(inline: InlineContent) -> InlineContent:
-        if isinstance(inline, Link):
+    def _rewrite_inline(inline: TextSpan | LinkSpan | StrikethroughSpan) -> InlineSpan:
+        if isinstance(inline, LinkSpan):
             if not nav_tree:
                 return inline
             if inline.target.startswith("#"):
@@ -327,96 +371,104 @@ def _rewrite_internal_links(
                 return inline
             if "://" in inline.target and not inline.target.startswith("nav://"):
                 return inline
-
             target_id = _resolve_link(inline.target)
             if target_id:
-                return Link(text=inline.text, target=f"notion://{target_id}")
-
+                return LinkSpan(text=inline.text, target=f"notion://{target_id}")
             unresolved.append(inline.target)
-            return Text(text=inline.text)
-        if isinstance(inline, Strikethrough) and inline.inlines:
-            return Strikethrough(
+            return TextSpan(text=inline.text)
+        if isinstance(inline, StrikethroughSpan) and inline.inlines:
+            return StrikethroughSpan(
                 text=inline.text,
                 inlines=tuple(_rewrite_inline(child) for child in inline.inlines),
             )
         return inline
 
-    def _rewrite_element(element: Element) -> Element:
-        if isinstance(element, Heading):
+    def _rewrite_block(block: Block) -> Block:
+        if isinstance(block, Heading):
             return Heading(
-                level=element.level,
-                text=element.text,
-                inlines=tuple(_rewrite_inline(i) for i in element.inlines),
+                level=block.level,
+                text=block.text,
+                inlines=tuple(_rewrite_inline(i) for i in block.inlines),
+                source_line=block.source_line,
+                source_file=block.source_file,
             )
-        if isinstance(element, Paragraph):
+        if isinstance(block, Paragraph):
             return Paragraph(
-                text=element.text,
-                inlines=tuple(_rewrite_inline(i) for i in element.inlines),
+                text=block.text,
+                inlines=tuple(_rewrite_inline(i) for i in block.inlines),
+                source_line=block.source_line,
+                source_file=block.source_file,
             )
-        if isinstance(element, ListElement):
-            return ListElement(
-                items=tuple(
-                    ListItem(
-                        text=item.text,
-                        inlines=tuple(_rewrite_inline(i) for i in item.inlines),
-                        children=tuple(
-                            _rewrite_element(child) for child in item.children
-                        ),
-                    )
-                    for item in element.items
-                ),
-                ordered=element.ordered,
+        if isinstance(block, BulletedListItem):
+            return BulletedListItem(
+                text=block.text,
+                inlines=tuple(_rewrite_inline(i) for i in block.inlines),
+                children=tuple(_rewrite_block(child) for child in block.children),
+                source_line=block.source_line,
+                source_file=block.source_file,
             )
-        if isinstance(element, TaskList):
-            return TaskList(
-                items=tuple(
-                    TaskItem(
-                        text=item.text,
-                        checked=item.checked,
-                        inlines=tuple(_rewrite_inline(i) for i in item.inlines),
-                    )
-                    for item in element.items
+        if isinstance(block, NumberedListItem):
+            return NumberedListItem(
+                text=block.text,
+                inlines=tuple(_rewrite_inline(i) for i in block.inlines),
+                children=tuple(_rewrite_block(child) for child in block.children),
+                source_line=block.source_line,
+                source_file=block.source_file,
+            )
+        if isinstance(block, Toggle):
+            return Toggle(
+                title=block.title,
+                inlines=tuple(_rewrite_inline(i) for i in block.inlines),
+                children=tuple(_rewrite_block(child) for child in block.children),
+                source_line=block.source_line,
+                source_file=block.source_file,
+            )
+        if isinstance(block, Callout):
+            return Callout(
+                callout_type=block.callout_type,
+                icon=block.icon,
+                children=tuple(_rewrite_block(child) for child in block.children),
+                source_line=block.source_line,
+                source_file=block.source_file,
+            )
+        if isinstance(block, Table):
+            headers = tuple(
+                TableCell(
+                    text=cell.text,
+                    inlines=tuple(_rewrite_inline(i) for i in cell.inlines),
+                    source_line=cell.source_line,
+                    source_file=cell.source_file,
                 )
+                for cell in block.headers
             )
-        if isinstance(element, Admonition):
-            return Admonition(
-                kind=element.kind,
-                title=element.title,
-                content=tuple(_rewrite_element(child) for child in element.content),
-            )
-        if isinstance(element, DefinitionList):
-            return DefinitionList(
-                items=tuple(
-                    DefinitionItem(
-                        term=item.term,
-                        inlines=tuple(_rewrite_inline(i) for i in item.inlines),
-                        descriptions=tuple(
-                            _rewrite_element(desc) for desc in item.descriptions
-                        ),
+            rows = []
+            for row in block.rows:
+                rows.append(
+                    tuple(
+                        TableCell(
+                            text=cell.text,
+                            inlines=tuple(_rewrite_inline(i) for i in cell.inlines),
+                            source_line=cell.source_line,
+                            source_file=cell.source_file,
+                        )
+                        for cell in row
                     )
-                    for item in element.items
                 )
-            )
-        if isinstance(element, Table):
             return Table(
-                rows=tuple(
-                    TableRow(
-                        cells=tuple(
-                            TableCell(
-                                text=cell.text,
-                                inlines=tuple(
-                                    _rewrite_inline(inline) for inline in cell.inlines
-                                ),
-                            )
-                            for cell in row.cells
-                        ),
-                        is_header=row.is_header,
-                    )
-                    for row in element.rows
-                ),
-                caption=element.caption,
+                headers=headers,
+                rows=tuple(rows),
+                source_line=block.source_line,
+                source_file=block.source_file,
             )
-        return element
+        rewritten_children = tuple(_rewrite_block(child) for child in block.children)
+        if rewritten_children != block.children:
+            return type(block)(  # type: ignore[call-arg]
+                **{
+                    **block.__dict__,
+                    "children": rewritten_children,
+                }
+            )
+        return block
 
-    rewritten_children = tuple(_rewrite_element(child) for child in page.children)
+    rewritten_children = tuple(_rewrite_block(child) for child in page.children)
     return Page(title=page.title, children=rewritten_children), unresolved
