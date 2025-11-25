@@ -104,4 +104,4 @@ def test_nav_listing_links_rewrite_to_notion_scheme() -> None:
     callout = notion_blocks[0]
     first_bullet = callout["callout"]["children"][0]["bulleted_list_item"]["rich_text"][0]
     assert first_bullet["text"]["content"] == "Home"
-    assert first_bullet["text"]["link"] == {"url": "notion://page-1"}
+    assert first_bullet["text"]["link"] == {"url": "https://www.notion.so/page1"}
