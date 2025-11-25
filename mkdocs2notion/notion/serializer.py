@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Callable, Iterable, Sequence, Tuple
+from urllib.parse import urlparse
 
 from mkdocs2notion.markdown.elements import (
     Block,
@@ -258,7 +259,7 @@ def _render_text_and_images(
 
 def _rich_text_for_inline(inline: InlineSpan) -> list[dict[str, Any]]:
     if isinstance(inline, LinkSpan):
-        return [text_rich(inline.text, url=inline.target)]
+        return [text_rich(inline.text, url=_validated_link(inline.target))]
     if isinstance(inline, TextSpan):
         return [text_rich(inline.text)]
     return []
@@ -290,6 +291,19 @@ def _heading_type(level: int) -> str:
     if level == 2:
         return "heading_2"
     return "heading_3"
+
+
+def _validated_link(url: str | None) -> str | None:
+    """Return the URL if it is valid for Notion, otherwise strip the link."""
+
+    if url and _is_valid_url(url):
+        return url
+    return None
+
+
+def _is_valid_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _default_image_resolver(image: Image) -> dict[str, Any]:
