@@ -151,10 +151,8 @@ mkdocs2notion/
 * [ ] Directory import with ID mapping
 * [ ] mkdocs.yml → hierarchy builder
 * [ ] Initial CLI (Typer-based)
-* [ ] First Notion adapter using Ultimate Notion
 * [ ] Add docs for block coverage
-* [ ] Publish PyPI v0.1.0
-* [ ] Optional PR to Ultimate Notion with internal modules
+* [ ] Publish PyPI v0.2.0
 
 ---
 
@@ -164,7 +162,7 @@ See **`agents.md`** for strict guidelines on:
 
 * development workflow
 * linting + typing
-* testing (offline + online)
+* testing 
 * commit rules
 * agent behavior
 
