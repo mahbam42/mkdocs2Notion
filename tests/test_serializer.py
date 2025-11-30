@@ -5,6 +5,7 @@ from mkdocs2notion.markdown.elements import (
     LinkSpan,
     Paragraph,
     TextSpan,
+    TodoListItem,
 )
 from mkdocs2notion.notion.serializer import collect_images, serialize_elements
 
@@ -79,3 +80,13 @@ def test_italic_annotations_render() -> None:
 
     annotations = payloads[0]["paragraph"]["rich_text"][0]["annotations"]
     assert annotations["italic"] is True
+
+
+def test_checkbox_list_serializes_to_notion_todo() -> None:
+    todo = TodoListItem(text="task", checked=True)
+
+    payloads = serialize_elements((todo,))
+
+    assert payloads[0]["type"] == "to_do"
+    assert payloads[0]["to_do"]["checked"] is True
+    assert payloads[0]["to_do"]["rich_text"][0]["text"]["content"] == "task"

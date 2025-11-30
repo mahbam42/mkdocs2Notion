@@ -20,3 +20,9 @@
    - Mention the on-call approver
    - Attach the reconciled CSV
 3. Archive artifacts for the monthly report
+
+## ToDo lists
+- [ ] Item 1 
+- [ ] Item 2
+- [X] Item 3 -already complete
+- [ ] This isn't done 

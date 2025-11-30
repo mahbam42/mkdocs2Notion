@@ -27,6 +27,7 @@ from mkdocs2notion.markdown.elements import (
     Table,
     TableCell,
     TextSpan,
+    TodoListItem,
     Toggle,
 )
 from mkdocs2notion.utils.logging import NullLogger, WarningLogger
@@ -202,8 +203,8 @@ def _parse_list(
     ordered: bool,
     logger: WarningLogger,
     indent: int,
-) -> Tuple[List[BulletedListItem | NumberedListItem], int]:
-    items: List[BulletedListItem | NumberedListItem] = []
+) -> Tuple[List[BulletedListItem | NumberedListItem | TodoListItem], int]:
+    items: List[BulletedListItem | NumberedListItem | TodoListItem] = []
     while index < len(lines):
         line = lines[index]
         if not _is_bullet_list(line) and not _is_numbered_list(line):
@@ -222,23 +223,7 @@ def _parse_list(
                 logger=logger,
                 indent=current_indent,
             )
-            parent = items[-1]
-            if isinstance(parent, BulletedListItem):
-                items[-1] = BulletedListItem(
-                    text=parent.text,
-                    inlines=parent.inlines,
-                    children=tuple(nested),
-                    source_line=parent.source_line,
-                    source_file=parent.source_file,
-                )
-            else:
-                items[-1] = NumberedListItem(
-                    text=parent.text,
-                    inlines=parent.inlines,
-                    children=tuple(nested),
-                    source_line=parent.source_line,
-                    source_file=parent.source_file,
-                )
+            items[-1] = _with_children(items[-1], nested)
             continue
         stripped = line.lstrip()
         if ordered:
@@ -249,15 +234,28 @@ def _parse_list(
                 bullet_text = stripped[2:]
             else:
                 bullet_text = stripped
-        normalized, inline_content = _parse_inline_formatting(bullet_text)
-        item_class = NumberedListItem if ordered else BulletedListItem
-        base_item = item_class(
-            text=normalized,
-            inlines=tuple(inline_content),
-            children=tuple(),
-            source_line=index + 1,
-            source_file=source_file,
-        )
+        checkbox_match = _CHECKBOX_RE.match(bullet_text) if not ordered else None
+        if checkbox_match:
+            body_text = checkbox_match.group("body")
+            normalized, inline_content = _parse_inline_formatting(body_text)
+            base_item: BulletedListItem | NumberedListItem | TodoListItem = TodoListItem(
+                text=normalized,
+                checked=checkbox_match.group("state").lower() == "x",
+                inlines=tuple(inline_content),
+                children=tuple(),
+                source_line=index + 1,
+                source_file=source_file,
+            )
+        else:
+            normalized, inline_content = _parse_inline_formatting(bullet_text)
+            item_class = NumberedListItem if ordered else BulletedListItem
+            base_item = item_class(
+                text=normalized,
+                inlines=tuple(inline_content),
+                children=tuple(),
+                source_line=index + 1,
+                source_file=source_file,
+            )
         index += 1
 
         child_blocks: List[Block] = []
@@ -304,15 +302,37 @@ def _parse_list(
             parsed_children, _ = _parse_lines(block_lines, 0, source_file, logger)
             child_blocks.extend(parsed_children)
 
-        item_with_children = item_class(
-            text=base_item.text,
-            inlines=base_item.inlines,
-            children=tuple(child_blocks),
-            source_line=base_item.source_line,
-            source_file=base_item.source_file,
-        )
-        items.append(item_with_children)
+        items.append(_with_children(base_item, child_blocks))
     return items, index
+
+
+def _with_children(
+    item: BulletedListItem | NumberedListItem | TodoListItem, children: Sequence[Block]
+) -> BulletedListItem | NumberedListItem | TodoListItem:
+    if isinstance(item, TodoListItem):
+        return TodoListItem(
+            text=item.text,
+            checked=item.checked,
+            inlines=item.inlines,
+            children=tuple(children),
+            source_line=item.source_line,
+            source_file=item.source_file,
+        )
+    if isinstance(item, BulletedListItem):
+        return BulletedListItem(
+            text=item.text,
+            inlines=item.inlines,
+            children=tuple(children),
+            source_line=item.source_line,
+            source_file=item.source_file,
+        )
+    return NumberedListItem(
+        text=item.text,
+        inlines=item.inlines,
+        children=tuple(children),
+        source_line=item.source_line,
+        source_file=item.source_file,
+    )
 
 
 def _parse_code_block(
@@ -843,6 +863,7 @@ _STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>.*?</style>", re.IGNORECASE | re.DO
 _TABLE_DIVIDER_RE = re.compile(r"^\s*\|?(?:\s*:?-+:?\s*\|)+\s*$")
 _CALLOUT_RE = re.compile(r"^>\s*\[!(?P<type>[A-Za-z]+)\]\s*(?P<body>.*)$")
 _ADMONITION_RE = re.compile(r'^!!!\s+(?P<type>[A-Za-z]+)(?:\s+(?P<title>.+))?$')
+_CHECKBOX_RE = re.compile(r"\[(?P<state>[ xX])\]\s*(?P<body>.*)")
 _LEADING_EMOJI_RE = re.compile(
     (
         r"^(?P<emoji>[\U0001F300-\U0001FAFF\U0001F1E6-\U0001F1FF"

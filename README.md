@@ -17,6 +17,7 @@ All parsing and conversion logic is implemented natively in this repository, wit
 * 🆔 **Local file-path ↔ page-ID mapping for updates**
 * 🛠 **Dry-run mode for testing without touching Notion**
 * ⚙️ **Adapter layer** to support different Notion clients
+* ☑️ **Markdown task lists render as Notion to-dos**
 
 ---
 

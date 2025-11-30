@@ -24,6 +24,7 @@ from .markdown.elements import (
     Table,
     TableCell,
     TextSpan,
+    TodoListItem,
     Toggle,
 )
 from .markdown.parser import MarkdownParseError, parse_markdown
@@ -448,6 +449,15 @@ def _rewrite_internal_links(
         if isinstance(block, BulletedListItem):
             return BulletedListItem(
                 text=block.text,
+                inlines=tuple(_rewrite_inline(i) for i in block.inlines),
+                children=tuple(_rewrite_block(child) for child in block.children),
+                source_line=block.source_line,
+                source_file=block.source_file,
+            )
+        if isinstance(block, TodoListItem):
+            return TodoListItem(
+                text=block.text,
+                checked=block.checked,
                 inlines=tuple(_rewrite_inline(i) for i in block.inlines),
                 children=tuple(_rewrite_block(child) for child in block.children),
                 source_line=block.source_line,

@@ -26,6 +26,7 @@ from mkdocs2notion.markdown.elements import (
     Table,
     TableCell,
     TextSpan,
+    TodoListItem,
     Toggle,
 )
 
@@ -120,6 +121,19 @@ def _serialize_block(
         }
         if children:
             payload["numbered_list_item"]["children"] = children
+        return [payload, *image_blocks]
+
+    if isinstance(element, TodoListItem):
+        rich_text, image_blocks = _render_text_and_images(
+            element.inlines, element.text, resolve_image
+        )
+        children = serialize_elements(element.children, resolve_image)
+        payload = {
+            "type": "to_do",
+            "to_do": {"rich_text": rich_text, "checked": element.checked},
+        }
+        if children:
+            payload["to_do"]["children"] = children
         return [payload, *image_blocks]
 
     if isinstance(element, Toggle):

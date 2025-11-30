@@ -11,6 +11,7 @@ from mkdocs2notion.markdown.elements import (
     RawMarkdown,
     Table,
     TextSpan,
+    TodoListItem,
     Toggle,
 )
 from mkdocs2notion.markdown.parser import parse_markdown
@@ -155,6 +156,22 @@ def test_material_callout_with_nested_list_parses_structure() -> None:
     assert guide.children
     assert isinstance(guide.children[0], BulletedListItem)
     assert guide.children[0].text == "Overview"
+
+
+def test_checkbox_bullets_become_todos() -> None:
+    content = "- [X] task 1\n- [ ] task 2\n  - [x] nested task"
+
+    page = parse_markdown(content, source_file="todos.md")
+
+    first, second = page.children
+    assert isinstance(first, TodoListItem)
+    assert first.checked is True
+    assert first.text == "task 1"
+
+    assert isinstance(second, TodoListItem)
+    assert second.checked is False
+    assert isinstance(second.children[0], TodoListItem)
+    assert second.children[0].checked is True
 
 
 def test_inline_italics_are_preserved() -> None:

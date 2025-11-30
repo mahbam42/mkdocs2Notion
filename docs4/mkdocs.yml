@@ -10,4 +10,5 @@ nav:
       - Multi-level Lists: lists.md
       - Nested Admonitions: admonitions.md
       - Code Blocks: code-blocks.md
-  - New File: addingAFile.md
+  - Added a File: addingAFile.md
+  - Todos: multileveltodos.md

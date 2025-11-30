@@ -145,6 +145,23 @@ class BulletedListItem(Block):
 
 
 @dataclass(frozen=True)
+class TodoListItem(Block):
+    """Todo list item with completion state."""
+
+    text: str
+    checked: bool
+    inlines: tuple[InlineSpan, ...] = field(default_factory=tuple)
+    type: ClassVar[str] = "to_do"
+
+    def _serialize(self) -> dict[str, Any]:
+        return {
+            "text": self.text,
+            "checked": self.checked,
+            "inlines": [serialize_inline(i) for i in self.inlines],
+        }
+
+
+@dataclass(frozen=True)
 class NumberedListItem(Block):
     """Numbered list item with inline text."""
 
@@ -293,5 +310,6 @@ __all__ = [
     "Table",
     "TableCell",
     "TextSpan",
+    "TodoListItem",
     "Toggle",
 ]
