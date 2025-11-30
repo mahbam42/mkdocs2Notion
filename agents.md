@@ -38,7 +38,7 @@ pre-commit install
 
 ## **2.2. Branch Workflow**
 
-1. Create a feature branch:
+1. Create a fresh feature branch:
 
    ```bash
    git checkout -b feature/mkdocs-import
