@@ -160,17 +160,6 @@ mkdocs2notion/
 
 ---
 
-## **Roadmap**
-
-* [ ] Core Markdown → Notion block converter
-* [ ] Directory import with ID mapping
-* [ ] mkdocs.yml → hierarchy builder
-* [ ] Initial CLI (Typer-based)
-* [ ] Add docs for block coverage
-* [ ] Publish PyPI v0.2.0
-
----
-
 ## **Contributing**
 
 See **`agents.md`** for strict guidelines on:
@@ -188,3 +177,10 @@ Contributions are welcome—but must follow these standards to maintain reliabil
 ## **License**
 
 MIT License.
+
+## **Release Notes**
+| Version | Changes |
+|----|----|
+| v0.2.1 | Fixed Readme and Installation Instructions |
+| v0.2.0 | Stable Release Version |
+| v0.1.0 | Preliminary Alpha Version |
