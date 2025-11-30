@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mkdocs2notion"
-version = "0.1.0"
+version = "0.2.0"
 description = "Publish Markdown and mkdocs.yml-based documentation into Notion."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -68,3 +68,7 @@ lint-fix = "ruff check --fix"
 typecheck = "mypy mkdocs2notion"
 checks = ["lint", "typecheck", "test"]
 serve = "mkdocs serve"
+
+[tool.hatch.publish.index]
+user = "env:HATCH_INDEX_USER"
+auth = "env:HATCH_INDEX_AUTH"
