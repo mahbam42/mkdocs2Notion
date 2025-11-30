@@ -54,7 +54,7 @@ class RichPublishProgress(PublishProgress):
             TextColumn("{task.completed}/{task.total} pages"),
             TimeElapsedColumn(),
             console=self.console,
-            transient=True,
+            transient=False,
         )
         self._progress.start()
         self._task_id = self._progress.add_task("Pushing to Notion", total=total)

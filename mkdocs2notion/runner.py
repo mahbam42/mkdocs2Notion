@@ -261,6 +261,8 @@ def build_publish_plan(
                 print(
                     f"[WARN] Nav item '{child.title}' is empty; creating stub container."
                 )
+            else:
+                document = _stub_document(directory_tree.root, child)
             plan.append(
                 PublishItem(nav_node=child, document=document, parent_key=parent_key)
             )

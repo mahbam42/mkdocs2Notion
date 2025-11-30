@@ -96,4 +96,5 @@ def test_publish_reports_progress(sample_docs_path: Path, tmp_path: Path) -> Non
     )
 
     assert progress.started_with == 4
+    assert len(progress.advanced) == 4
     assert progress.finished
