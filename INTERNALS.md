@@ -40,3 +40,12 @@ Inline tokens follow `[text](target)` for links and `![alt](src)` for images. St
 - GitHub-flavored table parsing expects a header row followed by a divider row; malformed tables become `RawMarkdown`.
 - Code blocks require fenced backticks; indented code blocks are not parsed.
 - Footnotes are currently ignored by the parser and serializer.
+
+## Runner and CLI Flow
+
+The Typer CLI in `mkdocs2notion/cli.py` wraps the runner entry points in `mkdocs2notion/runner.py`.
+
+- `push` loads the mkdocs project (with optional `--mkdocs` path), parses documents for warnings, honors `--fresh` to rebuild the page-ID map, and aborts before publishing when warnings exist and `--strict` is set.
+- `dry-run` renders the mkdocs navigation tree (when provided) and directory structure without contacting Notion; `--strict` causes the command to exit with status 1 if warnings were recorded.
+- `validate` performs structure checks and markdown parsing only; it returns 1 on errors and treats warnings as failures when `--strict` is provided.
+- Page IDs are persisted via `PageIdMap` next to the docs root; `--fresh` ignores existing mappings so new Notion pages are created.

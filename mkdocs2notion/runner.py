@@ -73,14 +73,19 @@ def run_push(
     strict: bool = False,
     logger: WarningLogger | None = None,
 ) -> None:
-    """
-    Push a directory of Markdown files to Notion.
+    """Push a directory of Markdown files to Notion.
 
-    Steps:
-    - scan directory for markdown files
-    - load optional mkdocs navigation tree
-    - parse markdown → internal block structures
-    - push pages to Notion using a Notion adapter
+    Args:
+        docs_path: Path to a docs directory or mkdocs project root.
+        mkdocs_yml: Optional mkdocs.yml path for navigation ordering.
+        parent_page_id: Optional Notion parent page ID overriding ``NOTION_PARENT_PAGE_ID``.
+        fresh: When True, ignore any cached page IDs and rebuild the local map.
+        progress: Optional reporter for publish progress.
+        strict: When True, abort before publishing when parse warnings are present.
+        logger: Optional warning logger to reuse across parsing and publishing.
+
+    Raises:
+        SystemExit: If ``strict`` is True and parsing emitted warnings.
     """
     from .notion.api_adapter import get_default_adapter
 
@@ -129,6 +134,15 @@ def run_dry_run(
 ) -> WarningLogger:
     """Print what the tool *would* do without contacting the Notion API.
 
+    Args:
+        docs_path: Path to a docs directory or mkdocs project root.
+        mkdocs_yml: Optional mkdocs.yml path for navigation ordering.
+        logger: Optional warning logger to reuse when reporting parsing issues.
+
+    Notes:
+        The caller enforces strict-mode exits; this function only gathers and
+        reports warnings.
+
     Returns:
         WarningLogger: Captured warnings from parsing the provided docs.
     """
@@ -163,7 +177,16 @@ def run_dry_run(
 def run_validate(
     docs_path: Path, mkdocs_yml: Optional[Path], *, strict: bool = False
 ) -> int:
-    """Validate markdown files and mkdocs.yml without publishing."""
+    """Validate markdown files and mkdocs.yml without publishing.
+
+    Args:
+        docs_path: Path to a docs directory or mkdocs project root.
+        mkdocs_yml: Optional mkdocs.yml path for navigation ordering checks.
+        strict: When True, treat warnings as failures and return a non-zero code.
+
+    Returns:
+        int: 0 when all checks pass; 1 when validation errors or strict warnings occur.
+    """
 
     print("🔧 Validating docs…")
     if strict:

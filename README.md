@@ -73,6 +73,19 @@ mkdocs2notion push docs/ --mkdocs mkdocs.yml
 mkdocs2notion dry-run docs/
 ```
 
+### **Validate docs without publishing**
+
+```bash
+mkdocs2notion validate docs/ --mkdocs mkdocs.yml
+```
+
+### **CLI options**
+
+- `--mkdocs <path>`: Use mkdocs.yml navigation ordering without requiring MkDocs to be installed.
+- `--parent <page_id>`: Override `NOTION_PARENT_PAGE_ID` for where new pages should live.
+- `--fresh`: Ignore the cached page-ID map and rebuild it before pushing.
+- `--strict`: Treat warnings as errors (push/dry-run/validate exit with status 1 when warnings are present).
+
 ---
 
 ## **Configuration**
@@ -173,4 +186,3 @@ Contributions are welcome—but must follow these standards to maintain reliabil
 ## **License**
 
 MIT License.
-

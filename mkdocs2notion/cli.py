@@ -108,28 +108,36 @@ def push(
         None,
         "--parent",
         "-p",
-        help="Notion page ID under which all pages will be created (overrides env variable).",
+        help=(
+            "Notion page ID under which all pages will be created "
+            "(overrides NOTION_PARENT_PAGE_ID)."
+        ),
     ),
     fresh: bool = typer.Option(
         False,
         "--fresh",
         "-f",
-        help="Ignore cached Notion page IDs when pushing.",
+        help="Ignore cached Notion page IDs and rebuild the local page map.",
     ),
     strict: bool = typer.Option(
         False,
         "--strict",
-        help="Fail when parse warnings are encountered instead of pushing.",
+        help="Fail when parse warnings are encountered instead of pushing any pages.",
     ),
 ) -> None:
     """
-    Push a directory of Markdown documents to Notion.
+    Push Markdown documents to Notion while keeping mkdocs ordering.
+
+    The command respects mkdocs.yml navigation when provided, rebuilds cached
+    Notion page IDs with ``--fresh``, and exits non-zero when warnings are
+    present and ``--strict`` is enabled.
 
     Examples:
         mkdocs2notion push docs/
         mkdocs2notion push docs/ --mkdocs mkdocs.yml
         mkdocs2notion push docs/ --parent <NOTION_PAGE_ID>
         mkdocs2notion push docs/ --fresh
+        mkdocs2notion push docs/ --strict
 
     """
     progress = RichPublishProgress(console)
@@ -177,6 +185,7 @@ def dry_run(
 
     Example:
         mkdocs2notion dry-run docs/
+        mkdocs2notion dry-run docs/ --strict
     """
     logger = run_dry_run(docs_path, mkdocs_yml)
     if logger.has_warnings():
@@ -216,7 +225,7 @@ def validate(
     Validate that the docs directory and mkdocs.yml (if supplied)
     follow expected patterns and are ready for publishing.
 
-    Checks:
+    Checks (fails with code 1 when ``--strict`` is set and warnings exist):
     - readable markdown files
     - valid mkdocs.yml structure
     - no duplicate page names
