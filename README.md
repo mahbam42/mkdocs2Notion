@@ -39,14 +39,15 @@ But getting a structured Markdown knowledge base into Notion—*and keeping it u
 
 ## **Installation**
 
-`mkdocs2notion` is not yet on PyPI (until the core APIs stabilize),
-but you can install it locally:
+`mkdocs2notion` v0.2.0 is published on PyPI and GitHub.
+
+Install from PyPI:
 
 ```bash
-pip install -e .
+pip install mkdocs2notion
 ```
 
-Or install from GitHub:
+Or install the latest from GitHub:
 
 ```bash
 pip install git+https://github.com/mahbam42/mkdocs2notion
