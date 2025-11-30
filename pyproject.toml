@@ -7,16 +7,15 @@ name = "mkdocs2notion"
 version = "0.1.0"
 description = "Publish Markdown and mkdocs.yml-based documentation into Notion."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
     { name = "mahbam42", email = "mahbam42@gmail.com" }
 ]
 
 dependencies = [
-    "typer>=0.9.0",
+    "typer[all]>=0.9.0",
     "pyyaml>=6.0",
-    "markdown-it-py>=3.0",
     "rich>=13.0",
     "notion-client>=2.0.0",
     "requests>=2.32.0",
@@ -40,7 +39,7 @@ line-length = 88
 extend-select = ["I"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.10"
 strict = true
 
 [[tool.mypy.overrides]]
